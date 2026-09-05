@@ -53,8 +53,8 @@ seastreet/
 │   ├── capture/       # iPhone/Continuity Camera and rolling frame buffer
 │   ├── detection/     # anonymous person/face detection and subject tracks
 │   ├── workflow/      # officer-triggered search state machine and predicates
-│   ├── providers/     # facial-search adapter; Clearview stays behind an API
-│   ├── records/       # synthetic DMV/law-enforcement records adapter
+│   ├── providers/     # Clearview embedding adapter and mock provider
+│   ├── records/       # Supabase vector search and synthetic records adapters
 │   ├── audit/         # append-only evidence events and exportable log
 │   └── ui/            # live feed, review, records, logs, and notifications
 ├── data/
@@ -79,7 +79,8 @@ iPhone Camera
     -> capture.FrameSource
     -> detection.SubjectTracker (anonymous until explicitly triggered)
     -> workflow.IdentificationSession
-    -> providers.FaceSearchProvider
+    -> providers.ClearviewEmbeddingProvider
+    -> records.SupabaseVectorStore
     -> workflow.HumanReview
     -> records.RecordsProvider
     -> ui.DemoConsole
