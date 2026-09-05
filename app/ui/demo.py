@@ -4,13 +4,14 @@ import subprocess
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
 import numpy
 
 from app.capture.camera_feed import opencv_frames
-from app.detection.face_detection import full_face
+from app.detection.face_detection import FaceTracker, detect_faces
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,12 +19,22 @@ WINDOW = "Camera - Face Detection"
 
 
 def receive_frames(frames):
-    for frame in opencv_frames(startup_timeout=None):
+    for frame in opencv_frames():
         frames.append(frame)
 
 
-def recognize_burst(service, snapshots, generation, results):
-    results.append((generation, service.recognize(snapshots)))
+@dataclass
+class PersonState:
+    snapshots: deque = field(default_factory=lambda: deque(maxlen=5))
+    generation: int = 0
+    running: bool = False
+    status: str = None
+    name: str = None
+    similarity: float = None
+
+
+def recognize_burst(service, snapshots, track_id, generation, results):
+    results.append((track_id, generation, service.recognize(snapshots)))
 
 
 def show_waiting(display):
@@ -43,12 +54,10 @@ def main():
     cv2.resizeWindow(WINDOW, 960, 640)
 
     display = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
-    snapshots = deque(maxlen=5)
+    tracker = FaceTracker()
     recognition = FacialRecognitionService.from_environment()
-    recognition_results = deque(maxlen=1)
-    recognition_status = None
-    recognition_running = False
-    recognition_generation = 0
+    recognition_results = deque()
+    states = {}
     last_frame_at = 0.0
 
     print("Waiting for Camera… Press Q or Escape to close.")
@@ -59,53 +68,90 @@ def main():
             except IndexError:
                 frame = None
 
-            try:
-                generation, result = recognition_results.pop()
-            except IndexError:
-                pass
-            else:
-                recognition_running = False
-                if generation == recognition_generation:
-                    recognition_status = f"BURST SENT - {result.status.upper()}"
-                    if result.error:
-                        print(f"Recognition error: {result.error}")
+            while recognition_results:
+                track_id, generation, result = recognition_results.popleft()
+                state = states.get(track_id)
+                if state is None:
+                    continue
+                state.running = False
+                if generation != state.generation:
+                    continue
+                state.status = result.status
+                if result.candidates:
+                    candidate = result.candidates[0]
+                    state.name = candidate.get("display_name") or candidate["identity_id"]
+                    state.similarity = candidate["similarity"]
+                if result.error:
+                    print(f"Recognition error for face {track_id}: {result.error}")
 
             if frame is not None:
                 last_frame_at = time.monotonic()
                 display = frame.copy()
-                detected, boxes, reason = full_face(display)
+                tracked_faces = tracker.update(detect_faces(display))
+                active_ids = set(tracker.active_ids)
+                for track_id in states.keys() - active_ids:
+                    del states[track_id]
 
-                if detected:
-                    if recognition_status is None:
-                        snapshots.append(FaceSample(frame, boxes[0]))
-                else:
-                    if snapshots:
-                        recognition_generation += 1
-                    snapshots.clear()
-                    recognition_status = None
+                for track_id, face in tracked_faces:
+                    state = states.setdefault(track_id, PersonState())
+                    if state.name:
+                        continue
+                    if face.ready:
+                        if state.status is None and not state.running:
+                            state.snapshots.append(FaceSample(frame, face.rect))
+                    else:
+                        if state.snapshots:
+                            state.generation += 1
+                        state.snapshots.clear()
+                        state.status = None
 
-                ready = len(snapshots) == 5
-                if ready and recognition_status is None and not recognition_running:
-                    recognition_generation += 1
-                    recognition_running = True
-                    recognition_status = "SEARCHING..."
-                    threading.Thread(
-                        target=recognize_burst,
-                        args=(recognition, tuple(snapshots), recognition_generation, recognition_results),
-                        daemon=True,
-                    ).start()
+                    if len(state.snapshots) == 5 and state.status is None and not state.running:
+                        state.generation += 1
+                        state.running = True
+                        state.status = "searching"
+                        threading.Thread(
+                            target=recognize_burst,
+                            args=(
+                                recognition,
+                                tuple(state.snapshots),
+                                track_id,
+                                state.generation,
+                                recognition_results,
+                            ),
+                            daemon=True,
+                        ).start()
 
-                color = (70, 220, 120) if ready else (0, 180, 255)
-                label = recognition_status or ("FULL FACE READY" if ready else reason)
-                for x, y, width, height in boxes:
-                    cv2.rectangle(display, (x, y), (x + width, y + height), color, 3)
+                matches = sum(bool(states[track_id].name) for track_id, _face in tracked_faces)
+                label = f"{len(tracked_faces)} FACES | {matches} CANDIDATE MATCHES"
+                color = (70, 220, 120) if matches else (0, 180, 255)
+                for track_id, face in tracked_faces:
+                    state = states[track_id]
+                    x, y, width, height = face.rect
+                    box_color = (70, 220, 120) if face.ready or state.name else (0, 180, 255)
+                    cv2.rectangle(display, (x, y), (x + width, y + height), box_color, 3)
+                    if state.name:
+                        face_label = f"CANDIDATE: {state.name} ({state.similarity:.2f})"
+                    elif state.running:
+                        face_label = "SEARCHING..."
+                    elif state.status:
+                        face_label = state.status.replace("_", " ").upper()
+                    else:
+                        face_label = face.reason
+                    cv2.putText(
+                        display,
+                        face_label,
+                        (x, max(24, y - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55,
+                        box_color,
+                        2,
+                        cv2.LINE_AA,
+                    )
                 cv2.rectangle(display, (0, 0), (display.shape[1], 54), (20, 20, 20), -1)
                 cv2.putText(display, label, (18, 37), cv2.FONT_HERSHEY_SIMPLEX, 0.85, color, 2, cv2.LINE_AA)
             elif time.monotonic() - last_frame_at > 2:
-                if snapshots:
-                    recognition_generation += 1
-                snapshots.clear()
-                recognition_status = None
+                tracker.clear()
+                states.clear()
                 show_waiting(display)
 
             cv2.imshow(WINDOW, display)

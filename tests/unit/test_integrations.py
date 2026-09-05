@@ -92,12 +92,22 @@ class IntegrationsTests(unittest.TestCase):
 
         def open_request(request, timeout):
             requests.append(request)
-            return Response([{"identity_id": "person-1", "image_id": "image-1", "similarity": 0.8}])
+            return Response(
+                [
+                    {
+                        "identity_id": "person-1",
+                        "display_name": "Person One",
+                        "image_id": "image-1",
+                        "similarity": 0.8,
+                    }
+                ]
+            )
 
         client = SupabaseClient("https://example.supabase.co", "key", opener=open_request)
         matches = client.match_embedding([0.0] * 512)
 
         self.assertEqual(matches[0]["identity_id"], "person-1")
+        self.assertEqual(matches[0]["display_name"], "Person One")
         self.assertTrue(requests[0].full_url.endswith("/rest/v1/rpc/match_identity_embeddings"))
         self.assertEqual(requests[0].get_header("Authorization"), "Bearer key")
 

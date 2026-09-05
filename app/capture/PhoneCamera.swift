@@ -96,36 +96,24 @@ final class CameraView: NSView {
 
     @objc func connect() {
         guard session.inputs.isEmpty else { return }
-        let devices = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.continuityCamera, .external],
+        let phones = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.continuityCamera],
             mediaType: .video,
             position: .unspecified
         ).devices
-        let phone = devices.first {
-            $0.deviceType == .continuityCamera || $0.localizedName.lowercased().contains("iphone")
-        }
 
-        guard let phone = phone,
+        guard let phone = phones.first,
               let input = try? AVCaptureDeviceInput(device: phone),
               session.canAddInput(input) else {
             window?.title = "No iPhone camera found"
             return
         }
 
-        session.beginConfiguration()
-        session.sessionPreset = .high
         session.addInput(input)
         let output = AVCaptureVideoDataOutput()
         output.alwaysDiscardsLateVideoFrames = true
-        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         output.setSampleBufferDelegate(frameOutput, queue: DispatchQueue(label: "camera.capture"))
-        guard session.canAddOutput(output) else {
-            session.commitConfiguration()
-            window?.title = "Could not create video output"
-            return
-        }
-        session.addOutput(output)
-        session.commitConfiguration()
+        if session.canAddOutput(output) { session.addOutput(output) }
         preview.session = session
         window?.title = phone.localizedName
         DispatchQueue.global(qos: .userInitiated).async { self.session.startRunning() }

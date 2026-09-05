@@ -28,9 +28,11 @@ Allow camera access when macOS asks. The Mac and iPhone must use the same Apple
 Account, with Wi-Fi, Bluetooth, and Continuity Camera enabled. Keep the iPhone
 nearby and locked. Press `Q` or Escape to close the detection window.
 
-The indicator turns green only after one frontal face—with both eyes visible—is
-stable for five frames. Those frames form a burst passed to the facial-recognition
-service. Without API credentials the service
+Each detected face gets its own box; green means the face is usable and orange
+shows that it needs adjustment. Every stable face track forms its own five-frame
+burst, and multiple tracks are searched concurrently. Candidate names and scores
+remain attached to their tracked faces through brief movement or occlusion.
+Without API credentials the service
 returns `pending_provider` and makes no network request.
 
 ## Clearview and Supabase
@@ -92,6 +94,14 @@ from app.capture.camera_feed import opencv_frames
 for frame in opencv_frames():
     # frame is a NumPy BGR image
     process(frame)
+```
+
+Detect and crop every usable face independently:
+
+```python
+from app.detection.face_detection import detect_faces
+
+clips = [face.crop(frame) for face in detect_faces(frame) if face.ready]
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design notes.
