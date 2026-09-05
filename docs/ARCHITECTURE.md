@@ -14,8 +14,8 @@ the UI.
 | `app/capture` | Start/stop the native camera helper, receive JPEG frames, maintain a short rolling buffer | Identity decisions |
 | `app/detection` | Detect visible faces and maintain anonymous subject tracks | Facial recognition or records access |
 | `app/workflow` | Validate the predicate, capture a burst, select frames, gate review, and coordinate state transitions | Provider-specific HTTP or database code |
-| `app/providers` | Adapt a configured facial-search provider and normalize candidate responses | Human confirmation |
-| `app/records` | Query synthetic records by confirmed identity and normalize the return | Candidate matching |
+| `app/providers` | Call Clearview with the selected image and normalize the returned embedding | Local matching or human confirmation |
+| `app/records` | Search the Supabase vector image database locally, resolve the linked identity, and query synthetic records | Embedding generation |
 | `app/audit` | Persist append-only events with timestamps, actor, reason, subject, results, decisions, and disposition | UI presentation |
 | `app/ui` | Show live feed, subject selection, review, records, logs, and threat notification state | Search or records policy |
 
@@ -24,10 +24,27 @@ the UI.
 ```text
 FrameSource.next() -> Frame
 SubjectTracker.observe(Frame) -> list[AnonymousSubject]
-FaceSearchProvider.search(images, request) -> list[Candidate]
+EmbeddingProvider.embed(images, request) -> Embedding
+VectorStore.match(embedding, threshold) -> list[Candidate]
 RecordsProvider.lookup(confirmed_identity) -> RecordsResult
 EventLog.append(event) -> event_id
 ```
+
+The intended Clearview path is:
+
+```text
+selected still
+   -> ClearviewEmbeddingProvider (API key, outbound request)
+   -> embedding returned to the Mac process
+   -> SupabaseVectorStore (pgvector similarity search)
+   -> linked synthetic identity candidate
+```
+
+Clearview provides the embedding service; it is not the source of the demo
+identity record. The application owns the similarity threshold, candidate
+ranking, human review gate, and identity-to-record join. Keep the API key in an
+environment variable or local secret store, never in source code or audit
+events.
 
 `IdentificationSession` owns the ordered states:
 
@@ -67,9 +84,11 @@ database can replace it behind the same `EventLog` contract later.
 ## Demo data
 
 `data/mock_records/` should contain only fabricated people, image fixtures,
-and records. `app/providers` should include a deterministic mock provider for
-the judging path. A Clearview adapter, if approved and available, should be
-disabled by default and must never silently fall back to real-person data.
+embeddings, and records. `app/providers` should include a deterministic mock
+embedding provider for the judging path. `app/records` should provide both a
+Supabase vector-store adapter and a local fixture adapter so the demo can run
+without network access. The Clearview key must be injected at runtime and
+must never silently fall back to real-person data.
 
 ## Implementation order
 
@@ -79,24 +98,26 @@ disabled by default and must never silently fall back to real-person data.
 3. Implement mock provider, human review, synthetic records, and audit events
    as one end-to-end vertical slice.
 4. Build the demo UI around the same session state and live event stream.
-5. Add the optional Clearview adapter only after its API, data handling,
-   authorization, retention, and network requirements are confirmed.
+5. Add Clearview embedding retrieval and Supabase vector matching behind the
+   interfaces above; keep the fixture adapters as the offline demo path.
 6. Add phone notification as a final adapter; it must never change the review
    or records gate.
 
 ## Open design questions
 
-1. Is the intended demo allowed to send face images to Clearview, and do we
-   have credentials, API documentation, and permission to use that service?
+1. What Clearview embedding endpoint, input format, model/version, rate limit,
+   and response schema will the provided API key use?
 2. What exact search predicate and reviewer role should the demo require?
 3. Should the operator interact with the Mac UI, the iPhone, or both? The
    current prototype has no iPhone control channel; it only streams camera
    frames to the Mac.
 4. What should a mock record contain, and which result should trigger the
    phone noise or visual alert?
-5. Should audit events be written to JSONL, SQLite, or Supabase during the
+5. What Supabase project/table/schema and pgvector distance metric should the
+   vector adapter target? What similarity threshold counts as a candidate?
+6. Should audit events be written to JSONL, SQLite, or Supabase during the
    hackathon? Who can view or export them?
-6. What is the required retention behavior for captured frames and provider
+7. What is the required retention behavior for captured frames and provider
    responses after a rejected or cancelled search?
-7. Does the demo need multiple subjects in view, or can it enforce one
+8. Does the demo need multiple subjects in view, or can it enforce one
    selected face at a time as the current detector does?

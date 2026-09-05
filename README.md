@@ -53,8 +53,8 @@ seastreet/
 │   ├── capture/       # iPhone/Continuity Camera and rolling frame buffer
 │   ├── detection/     # anonymous person/face detection and subject tracks
 │   ├── workflow/      # officer-triggered search state machine and predicates
-│   ├── providers/     # facial-search adapter; Clearview stays behind an API
-│   ├── records/       # synthetic DMV/law-enforcement records adapter
+│   ├── providers/     # Clearview embedding adapter and mock provider
+│   ├── records/       # Supabase vector search and synthetic records adapters
 │   ├── audit/         # append-only evidence events and exportable log
 │   └── ui/            # live feed, review, records, logs, and notifications
 ├── data/
@@ -65,10 +65,11 @@ seastreet/
 ├── tests/
 │   ├── unit/
 │   └── integration/
-├── camera_feed.py     # current feed client; migrate into app/capture later
-├── face_detection.py  # current local detector; migrate into app/detection later
-├── main.py            # current executable spike and compatibility entry point
-└── PhoneCamera.swift  # native camera helper launched by run.sh
+├── camera_feed.py     # compatibility shim for app/capture/camera_feed.py
+├── face_detection.py  # compatibility shim for app/detection/face_detection.py
+├── main.py            # compatibility entry point for app/ui/demo.py
+├── run.sh             # compatibility entry point for scripts/run.sh
+└── scripts/run.sh     # native camera build and launch script
 ```
 
 ### Runtime flow
@@ -78,7 +79,8 @@ iPhone Camera
     -> capture.FrameSource
     -> detection.SubjectTracker (anonymous until explicitly triggered)
     -> workflow.IdentificationSession
-    -> providers.FaceSearchProvider
+    -> providers.ClearviewEmbeddingProvider
+    -> records.SupabaseVectorStore
     -> workflow.HumanReview
     -> records.RecordsProvider
     -> ui.DemoConsole
