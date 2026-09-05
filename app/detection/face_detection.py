@@ -12,19 +12,22 @@ EYES = cv2.CascadeClassifier(str(DATA / "haarcascade_eye_tree_eyeglasses.xml"))
 
 def full_face(frame):
     """Return (is_ready, face_boxes, reason) for one unobstructed frontal face."""
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    source_width = frame.shape[1]
+    scale = min(1.0, 640 / source_width)
+    image = cv2.resize(frame, None, fx=scale, fy=scale) if scale < 1 else frame
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     height, width = gray.shape
     minimum = max(70, min(width, height) // 7)
     faces = FACE.detectMultiScale(gray, 1.1, 6, minSize=(minimum, minimum))
-    boxes = [tuple(map(int, face)) for face in faces]
+    boxes = [tuple(round(value / scale) for value in face) for face in faces]
 
     if not boxes:
         return False, boxes, "NO FACE"
     if len(boxes) > 1:
         return False, boxes, "ONE PERSON ONLY"
 
-    x, y, w, h = boxes[0]
+    x, y, w, h = map(int, faces[0])
     margin = min(width, height) * 0.025
     if x < margin or y < margin or x + w > width - margin or y + h > height - margin:
         return False, boxes, "SHOW YOUR FULL FACE"

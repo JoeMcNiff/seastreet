@@ -1,9 +1,14 @@
 # iPhone Camera
 
-A small native macOS window for Apple's Continuity Camera. There is no server
-and nothing to open on the iPhone.
+A native macOS Continuity Camera helper with a local-only Python frame bridge.
+Nothing needs to be opened on the iPhone.
+
+## Demo setup
+
+Run these commands from the repository root:
 
 ```bash
+cd /Users/josephmcniff/dnhacks/seastreet
 python3 -m app.ui.demo
 ```
 
@@ -57,7 +62,7 @@ seastreet/
 │   ├── providers/     # Clearview embedding adapter and mock provider
 │   ├── records/       # Supabase vector search and synthetic records adapters
 │   ├── audit/         # append-only evidence events and exportable log
-│   └── ui/            # live feed, review, records, logs, and notifications
+│   └── ui/            # live feed, review, records, and logs
 ├── data/
 │   ├── mock_records/  # synthetic identities and records only
 │   └── events/        # local demo event output; ignored by git
