@@ -1,5 +1,6 @@
 import json
 import math
+import threading
 import unittest
 
 from app.providers.clearview import ClearviewClient, ClearviewError
@@ -46,6 +47,19 @@ class IntegrationsTests(unittest.TestCase):
         with self.assertRaises(ClearviewError):
             client.embed_bytes(b"jpeg", (1, 2, 30, 40))
 
+    def test_clearview_embeds_burst_concurrently(self):
+        client = ClearviewClient("secret")
+        barrier = threading.Barrier(5, timeout=1)
+
+        def embed_frame(_frame, rect):
+            barrier.wait()
+            return rect
+
+        client.embed_frame = embed_frame
+        samples = ((object(), index) for index in range(5))
+
+        self.assertEqual(client.embed_burst(samples), tuple(range(5)))
+
     def test_clearview_detects_and_embeds_faces(self):
         requests = []
         embedding = [1.0] + [0.0] * 511
@@ -59,7 +73,6 @@ class IntegrationsTests(unittest.TestCase):
                             {
                                 "rect": "1,2,30,40",
                                 "confidence": 0.9,
-                                "landmarks": [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]],
                                 "embedding": embedding,
                             }
                         ]

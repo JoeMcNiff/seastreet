@@ -2,9 +2,9 @@
 
 import json
 import math
-import mimetypes
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -17,9 +17,7 @@ DEFAULT_URL = "https://ip-10-200-46-204.tail5891d.ts.net"
 
 
 class ClearviewError(RuntimeError):
-    def __init__(self, message, status_code=None):
-        super().__init__(message)
-        self.status_code = status_code
+    pass
 
 
 @dataclass(frozen=True)
@@ -32,7 +30,6 @@ class HealthStatus:
 class EmbeddedFace:
     rect: tuple
     confidence: float
-    landmarks: tuple
     embedding: tuple
 
 
@@ -95,18 +92,9 @@ class ClearviewClient:
             raise ClearviewError("Could not encode camera frame")
         return self.embed_bytes(jpeg.tobytes(), (x, y, width, height))
 
-    def embed_file(self, path, rect):
-        path = Path(path)
-        content_type = mimetypes.guess_type(path.name)[0]
-        return self.embed_bytes(path.read_bytes(), rect, path.name, content_type)
-
-    def detect_and_embed_file(self, path):
-        path = Path(path)
-        content_type = mimetypes.guess_type(path.name)[0]
-        return self.detect_and_embed_bytes(path.read_bytes(), path.name, content_type)
-
     def embed_burst(self, samples):
-        return tuple(self.embed_frame(frame, rect) for frame, rect in samples)
+        with ThreadPoolExecutor(max_workers=5) as workers:
+            return tuple(workers.map(lambda sample: self.embed_frame(*sample), samples))
 
     def _request(self, path, method="GET", body=None, content_type=None):
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
@@ -118,7 +106,7 @@ class ClearviewClient:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
-            raise ClearviewError(detail or error.reason, error.code) from error
+            raise ClearviewError(f"HTTP {error.code}: {detail or error.reason}") from error
         except (URLError, TimeoutError) as error:
             raise ClearviewError(f"Clearview request failed: {error}") from error
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -146,15 +134,11 @@ class ClearviewClient:
     def _validate_face(cls, face):
         try:
             confidence = float(face["confidence"])
-            landmarks = tuple(tuple(float(value) for value in point) for point in face["landmarks"])
-            if not math.isfinite(confidence) or len(landmarks) != 5:
-                raise ValueError
-            if any(len(point) != 2 or not all(math.isfinite(value) for value in point) for point in landmarks):
+            if not math.isfinite(confidence):
                 raise ValueError
             return EmbeddedFace(
                 cls._validate_rect(face["rect"]),
                 confidence,
-                landmarks,
                 cls._validate_embedding(face["embedding"]),
             )
         except (KeyError, TypeError, ValueError) as error:

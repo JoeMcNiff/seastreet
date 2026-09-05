@@ -22,7 +22,7 @@ class CoreTests(unittest.TestCase):
 
     def test_recognition_requires_five_snapshots(self):
         service = FacialRecognitionService()
-        self.assertEqual(service.recognize([object()] * 5).snapshot_count, 5)
+        self.assertEqual(service.recognize([object()] * 5).status, "pending_provider")
         with self.assertRaises(ValueError):
             service.recognize([object()] * 4)
 

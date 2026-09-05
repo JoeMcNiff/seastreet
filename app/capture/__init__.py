@@ -1,1 +1,0 @@
-"""Camera capture and frame transport."""

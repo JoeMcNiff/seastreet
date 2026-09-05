@@ -16,8 +16,6 @@ create unique index if not exists identities_external_ref_idx
 
 alter table public.identity_images
   add column if not exists sha256 text,
-  add column if not exists width integer check (width > 0),
-  add column if not exists height integer check (height > 0),
   add column if not exists face_rect real[] check (array_length(face_rect, 1) = 4);
 
 create unique index if not exists identity_images_sha256_idx

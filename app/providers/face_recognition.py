@@ -17,7 +17,6 @@ class FaceSample:
 @dataclass(frozen=True)
 class RecognitionResult:
     status: str
-    snapshot_count: int
     candidates: tuple = ()
     error: str = None
 
@@ -51,7 +50,7 @@ class FacialRecognitionService:
         if len(snapshots) != 5:
             raise ValueError("Facial recognition requires exactly five snapshots")
         if self.clearview is None:
-            return RecognitionResult("pending_provider", len(snapshots))
+            return RecognitionResult("pending_provider")
 
         try:
             embeddings = self.clearview.embed_burst(
@@ -61,9 +60,9 @@ class FacialRecognitionService:
             matches = self.supabase.match_embedding(query, self.threshold, self.limit)
             candidates = self.best_identity_matches(matches)
             status = "candidates_found" if candidates else "no_match"
-            return RecognitionResult(status, len(snapshots), candidates)
+            return RecognitionResult(status, candidates)
         except (ClearviewError, SupabaseError, ValueError) as error:
-            return RecognitionResult("provider_error", len(snapshots), error=str(error))
+            return RecognitionResult("provider_error", error=str(error))
 
     @staticmethod
     def average_embeddings(embeddings):

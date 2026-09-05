@@ -14,7 +14,7 @@ from app.detection.face_detection import full_face
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 
 ROOT = Path(__file__).resolve().parents[2]
-WINDOW = "iPhone Camera - Full Face Detection"
+WINDOW = "Camera - Face Detection"
 
 
 def receive_frames(frames):
@@ -22,10 +22,13 @@ def receive_frames(frames):
         frames.append(frame)
 
 
+def recognize_burst(service, snapshots, generation, results):
+    results.append((generation, service.recognize(snapshots)))
+
+
 def show_waiting(display):
     display[:] = 12
-    cv2.putText(display, "WAITING FOR IPHONE CAMERA...", (220, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 180, 255), 2, cv2.LINE_AA)
-    cv2.putText(display, "Keep the iPhone nearby and locked", (305, 395), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1, cv2.LINE_AA)
+    cv2.putText(display, "WAITING FOR CAMERA...", (220, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 180, 255), 2, cv2.LINE_AA)
 
 
 def main():
@@ -42,11 +45,13 @@ def main():
     display = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
     snapshots = deque(maxlen=5)
     recognition = FacialRecognitionService.from_environment()
+    recognition_results = deque(maxlen=1)
     recognition_status = None
+    recognition_running = False
+    recognition_generation = 0
     last_frame_at = 0.0
-    streak = 0
 
-    print("Waiting for Continuity Camera… Press Q or Escape to close.")
+    print("Waiting for Camera… Press Q or Escape to close.")
     try:
         while True:
             try:
@@ -54,22 +59,41 @@ def main():
             except IndexError:
                 frame = None
 
+            try:
+                generation, result = recognition_results.pop()
+            except IndexError:
+                pass
+            else:
+                recognition_running = False
+                if generation == recognition_generation:
+                    recognition_status = f"BURST SENT - {result.status.upper()}"
+                    if result.error:
+                        print(f"Recognition error: {result.error}")
+
             if frame is not None:
                 last_frame_at = time.monotonic()
                 display = frame.copy()
                 detected, boxes, reason = full_face(display)
-                streak = min(streak + 1, 5) if detected else 0
-                ready = streak == 5
 
                 if detected:
-                    snapshots.append(FaceSample(frame.copy(), boxes[0]))
+                    if recognition_status is None:
+                        snapshots.append(FaceSample(frame, boxes[0]))
                 else:
+                    if snapshots:
+                        recognition_generation += 1
                     snapshots.clear()
                     recognition_status = None
 
-                if ready and recognition_status is None and len(snapshots) == 5:
-                    result = recognition.recognize(list(snapshots))
-                    recognition_status = f"BURST SENT - {result.status.upper()}"
+                ready = len(snapshots) == 5
+                if ready and recognition_status is None and not recognition_running:
+                    recognition_generation += 1
+                    recognition_running = True
+                    recognition_status = "SEARCHING..."
+                    threading.Thread(
+                        target=recognize_burst,
+                        args=(recognition, tuple(snapshots), recognition_generation, recognition_results),
+                        daemon=True,
+                    ).start()
 
                 color = (70, 220, 120) if ready else (0, 180, 255)
                 label = recognition_status or ("FULL FACE READY" if ready else reason)
@@ -78,7 +102,8 @@ def main():
                 cv2.rectangle(display, (0, 0), (display.shape[1], 54), (20, 20, 20), -1)
                 cv2.putText(display, label, (18, 37), cv2.FONT_HERSHEY_SIMPLEX, 0.85, color, 2, cv2.LINE_AA)
             elif time.monotonic() - last_frame_at > 2:
-                streak = 0
+                if snapshots:
+                    recognition_generation += 1
                 snapshots.clear()
                 recognition_status = None
                 show_waiting(display)
