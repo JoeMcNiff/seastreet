@@ -5,11 +5,18 @@ Nothing needs to be opened on the iPhone.
 
 ## Demo setup
 
-Run these commands from the repository root:
+Create the virtual environment once:
 
 ```bash
 cd /Users/josephmcniff/dnhacks/seastreet
-python3 -m app.ui.demo
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+After that, run the demo with:
+
+```bash
+.venv/bin/python -m app.ui.demo
 ```
 
 Use `bash scripts/run.sh` when you only want the unannotated native camera
@@ -22,8 +29,32 @@ nearby and locked. Press `Q` or Escape to close the detection window.
 
 The indicator turns green only after one frontal face—with both eyes visible—is
 stable for five frames. Those five detected frames are copied into a burst and
-passed once to the skeleton facial-recognition service. The service currently
-returns `pending_provider`; it does not make a network request yet.
+passed to the facial-recognition service. Without API credentials the service
+returns `pending_provider` and makes no network request.
+
+## Clearview and Supabase
+
+Apply `supabase/migrations/001_face_embeddings.sql` to the existing Supabase
+schema, then fill in `.env`. Python loads it automatically:
+
+```bash
+.venv/bin/python -m scripts.check_connections
+```
+
+The live workflow sends each of the five original burst frames and its OpenCV
+face rectangle to Clearview `/mlapi/v1/embed`. It averages and normalizes the
+five returned vectors, calls the Supabase `match_identity_embeddings` RPC, and
+returns the strongest image match per identity. It does not use Clearview
+`/detect`, and it does not retrieve criminal records without a later human
+review step.
+
+To enroll fabricated reference images, copy
+`data/mock_records/manifest.example.json`, add the referenced JPEG/PNG files,
+and run:
+
+```bash
+.venv/bin/python -m scripts.enroll_mock_faces data/mock_records/manifest.json
+```
 
 ## Use frames in Python
 
