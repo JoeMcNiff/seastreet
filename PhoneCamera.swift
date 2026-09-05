@@ -30,7 +30,13 @@ final class FrameServer {
             var packet = Data(bytes: &size, count: 4)
             packet.append(jpeg)
             self.sending = true
-            client.send(content: packet, completion: .contentProcessed { _ in self.sending = false })
+            client.send(content: packet, completion: .contentProcessed { error in
+                self.sending = false
+                if error != nil {
+                    client.cancel()
+                    self.client = nil
+                }
+            })
         }
     }
 }
@@ -71,8 +77,12 @@ final class CameraView: NSView {
 
         AVCaptureDevice.requestAccess(for: .video) { allowed in
             DispatchQueue.main.async {
-                if allowed { self.connect() }
-                else { self.window?.title = "Camera permission denied" }
+                if allowed {
+                    self.connect()
+                    Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.connect() }
+                } else {
+                    self.window?.title = "Camera permission denied"
+                }
             }
         }
     }
@@ -86,24 +96,31 @@ final class CameraView: NSView {
 
     @objc func connect() {
         guard session.inputs.isEmpty else { return }
-        let phones = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.continuityCamera],
+        let devices = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.continuityCamera, .external],
             mediaType: .video,
             position: .unspecified
         ).devices
+        let phone = devices.first {
+            $0.deviceType == .continuityCamera || $0.localizedName.lowercased().contains("iphone")
+        }
 
-        guard let phone = phones.first,
+        guard let phone = phone,
               let input = try? AVCaptureDeviceInput(device: phone),
               session.canAddInput(input) else {
             window?.title = "No iPhone camera found"
             return
         }
 
+        session.beginConfiguration()
+        session.sessionPreset = .high
         session.addInput(input)
         let output = AVCaptureVideoDataOutput()
         output.alwaysDiscardsLateVideoFrames = true
+        output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         output.setSampleBufferDelegate(frameOutput, queue: DispatchQueue(label: "camera.capture"))
         if session.canAddOutput(output) { session.addOutput(output) }
+        session.commitConfiguration()
         preview.session = session
         window?.title = phone.localizedName
         DispatchQueue.global(qos: .userInitiated).async { self.session.startRunning() }
