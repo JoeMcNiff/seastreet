@@ -4,6 +4,10 @@ import socket
 import struct
 import time
 
+HOST = "127.0.0.1"
+PORT = 8765
+MAX_FRAME_BYTES = 5_000_000
+
 
 class CameraUnavailable(RuntimeError):
     pass
@@ -19,7 +23,7 @@ def _read(socket_, size):
     return bytes(data)
 
 
-def jpeg_frames(host="127.0.0.1", port=8765, startup_timeout=20):
+def jpeg_frames(host=HOST, port=PORT, startup_timeout=20):
     """Yield JPEG frames, failing clearly if the camera never starts."""
     deadline = float("inf") if startup_timeout is None else time.monotonic() + startup_timeout
     while True:
@@ -30,9 +34,11 @@ def jpeg_frames(host="127.0.0.1", port=8765, startup_timeout=20):
                         size = struct.unpack("!I", _read(connection, 4))[0]
                     except socket.timeout:
                         if time.monotonic() >= deadline:
-                            raise CameraUnavailable("Continuity Camera did not produce a frame within 20 seconds")
+                            raise CameraUnavailable(
+                                f"Continuity Camera produced no frame within {startup_timeout} seconds"
+                            )
                         continue
-                    if size > 5_000_000:
+                    if not 0 < size <= MAX_FRAME_BYTES:
                         raise ConnectionError("Invalid frame size")
                     frame = _read(connection, size)
                     deadline = float("inf")
@@ -41,7 +47,9 @@ def jpeg_frames(host="127.0.0.1", port=8765, startup_timeout=20):
             raise
         except (ConnectionError, OSError):
             if time.monotonic() >= deadline:
-                raise CameraUnavailable("The native camera helper did not start within 20 seconds")
+                raise CameraUnavailable(
+                    f"The camera helper did not start within {startup_timeout} seconds"
+                )
             time.sleep(0.5)
 
 
@@ -51,4 +59,6 @@ def opencv_frames(startup_timeout=20):
     import numpy
 
     for jpeg in jpeg_frames(startup_timeout=startup_timeout):
-        yield cv2.imdecode(numpy.frombuffer(jpeg, dtype=numpy.uint8), cv2.IMREAD_COLOR)
+        frame = cv2.imdecode(numpy.frombuffer(jpeg, dtype=numpy.uint8), cv2.IMREAD_COLOR)
+        if frame is not None:
+            yield frame

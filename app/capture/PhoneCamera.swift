@@ -119,7 +119,12 @@ final class CameraView: NSView {
         output.alwaysDiscardsLateVideoFrames = true
         output.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         output.setSampleBufferDelegate(frameOutput, queue: DispatchQueue(label: "camera.capture"))
-        if session.canAddOutput(output) { session.addOutput(output) }
+        guard session.canAddOutput(output) else {
+            session.commitConfiguration()
+            window?.title = "Could not create video output"
+            return
+        }
+        session.addOutput(output)
         session.commitConfiguration()
         preview.session = session
         window?.title = phone.localizedName

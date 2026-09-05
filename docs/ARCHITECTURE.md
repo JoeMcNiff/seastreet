@@ -17,7 +17,7 @@ the UI.
 | `app/providers` | Call Clearview with the selected image and normalize the returned embedding | Local matching or human confirmation |
 | `app/records` | Search the Supabase vector image database locally, resolve the linked identity, and query synthetic records | Embedding generation |
 | `app/audit` | Persist append-only events with timestamps, actor, reason, subject, results, decisions, and disposition | UI presentation |
-| `app/ui` | Show live feed, subject selection, review, records, logs, and threat notification state | Search or records policy |
+| `app/ui` | Show live feed, subject selection, review, records, and logs | Search or records policy |
 
 ## Suggested module contracts
 
@@ -56,7 +56,6 @@ IDLE
   -> CANDIDATE_RETURNED
   -> HUMAN_CONFIRMED | HUMAN_REJECTED
   -> RECORDS_RETURNED
-  -> NOTIFICATION_SENT
   -> CLOSED
 ```
 
@@ -75,7 +74,6 @@ Each search event should include:
 - normalized candidate, provider status, and provider error if any
 - reviewer ID, review decision, and review timestamp
 - records query ID, returned record categories, and final disposition
-- notification status and delivery timestamp, when used
 
 Store image bytes and sensitive payloads separately from the searchable event
 index. For the hackathon, JSON Lines is enough for the audit stream; a
@@ -100,8 +98,6 @@ must never silently fall back to real-person data.
 4. Build the demo UI around the same session state and live event stream.
 5. Add Clearview embedding retrieval and Supabase vector matching behind the
    interfaces above; keep the fixture adapters as the offline demo path.
-6. Add phone notification as a final adapter; it must never change the review
-   or records gate.
 
 ## Open design questions
 
@@ -111,13 +107,11 @@ must never silently fall back to real-person data.
 3. Should the operator interact with the Mac UI, the iPhone, or both? The
    current prototype has no iPhone control channel; it only streams camera
    frames to the Mac.
-4. What should a mock record contain, and which result should trigger the
-   phone noise or visual alert?
-5. What Supabase project/table/schema and pgvector distance metric should the
+4. What Supabase project/table/schema and pgvector distance metric should the
    vector adapter target? What similarity threshold counts as a candidate?
-6. Should audit events be written to JSONL, SQLite, or Supabase during the
+5. Should audit events be written to JSONL, SQLite, or Supabase during the
    hackathon? Who can view or export them?
-7. What is the required retention behavior for captured frames and provider
+6. What is the required retention behavior for captured frames and provider
    responses after a rejected or cancelled search?
-8. Does the demo need multiple subjects in view, or can it enforce one
+7. Does the demo need multiple subjects in view, or can it enforce one
    selected face at a time as the current detector does?
