@@ -29,8 +29,8 @@ Account, with Wi-Fi, Bluetooth, and Continuity Camera enabled. Keep the iPhone
 nearby and locked. Press `Q` or Escape to close the detection window.
 
 Each detected face gets its own box; green means the face is usable and orange
-shows that it needs adjustment. Every stable face track forms its own three-frame
-burst, and multiple tracks are searched concurrently. Candidate names and scores
+shows that it needs adjustment. Every ready face is searched independently, and
+multiple people are searched concurrently. Candidate names and scores
 remain attached to their tracked faces through brief movement or occlusion.
 Without API credentials the service
 returns `pending_provider` and makes no network request.
@@ -44,9 +44,9 @@ schema, then fill in `.env`. Python loads it automatically:
 python -m scripts.check_connections
 ```
 
-The live workflow sends each of the three original burst frames and its OpenCV
-face rectangle to Clearview `/mlapi/v1/embed`. It averages and normalizes the
-three returned vectors, calls the Supabase `match_identity_embeddings` RPC, and
+The live workflow sends one frame and its OpenCV face rectangle to Clearview
+`/mlapi/v1/embed`. It sends the returned vector to the Supabase
+`match_identity_embeddings` RPC and
 returns the strongest image match per identity. It does not use Clearview
 `/detect`, and it does not retrieve criminal records without a later human
 review step.

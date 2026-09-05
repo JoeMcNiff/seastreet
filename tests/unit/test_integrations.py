@@ -1,6 +1,4 @@
 import json
-import math
-import threading
 import unittest
 
 from app.providers.clearview import ClearviewClient, ClearviewError
@@ -46,19 +44,6 @@ class IntegrationsTests(unittest.TestCase):
         )
         with self.assertRaises(ClearviewError):
             client.embed_bytes(b"jpeg", (1, 2, 30, 40))
-
-    def test_clearview_embeds_burst_concurrently(self):
-        client = ClearviewClient("secret")
-        barrier = threading.Barrier(3, timeout=1)
-
-        def embed_frame(_frame, rect):
-            barrier.wait()
-            return rect
-
-        client.embed_frame = embed_frame
-        samples = ((object(), index) for index in range(3))
-
-        self.assertEqual(client.embed_burst(samples), tuple(range(3)))
 
     def test_clearview_detects_and_embeds_faces(self):
         requests = []
@@ -126,13 +111,13 @@ class IntegrationsTests(unittest.TestCase):
 
         self.assertEqual(files[0]["path"], "person-one/face.jpg")
 
-    def test_burst_is_averaged_normalized_and_grouped_by_identity(self):
+    def test_face_embedding_is_matched_and_grouped_by_identity(self):
         unit = tuple([1.0] + [0.0] * 511)
 
         class Embeddings:
-            def embed_burst(self, samples):
-                self.samples = tuple(samples)
-                return (unit,) * 3
+            def embed_frame(self, frame, rect):
+                self.sample = frame, rect
+                return unit
 
         class Matches:
             def match_embedding(self, embedding, threshold, limit):
@@ -145,11 +130,11 @@ class IntegrationsTests(unittest.TestCase):
 
         clearview, supabase = Embeddings(), Matches()
         service = FacialRecognitionService(clearview, supabase)
-        result = service.recognize([FaceSample(object(), (1, 2, 3, 4))] * 3)
+        result = service.recognize_face(FaceSample(object(), (1, 2, 3, 4)))
 
         self.assertEqual(result.status, "candidates_found")
         self.assertEqual([candidate["identity_id"] for candidate in result.candidates], ["one", "two"])
-        self.assertTrue(math.isclose(sum(value * value for value in supabase.embedding), 1.0))
+        self.assertEqual(supabase.embedding, unit)
 
 
 if __name__ == "__main__":

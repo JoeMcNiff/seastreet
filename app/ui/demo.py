@@ -4,7 +4,7 @@ import subprocess
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -12,7 +12,7 @@ import numpy
 
 from app.capture.camera_feed import opencv_frames
 from app.detection.face_detection import FaceTracker, detect_faces
-from app.providers.face_recognition import BURST_SIZE, FaceSample, FacialRecognitionService
+from app.providers.face_recognition import FaceSample, FacialRecognitionService
 
 ROOT = Path(__file__).resolve().parents[2]
 WINDOW = "Camera - Face Detection"
@@ -25,7 +25,6 @@ def receive_frames(frames):
 
 @dataclass
 class PersonState:
-    samples: deque = field(default_factory=lambda: deque(maxlen=BURST_SIZE))
     generation: int = 0
     running: bool = False
     status: str = None
@@ -33,8 +32,8 @@ class PersonState:
     similarity: float = None
 
 
-def recognize_burst(service, samples, track_id, generation, results):
-    results.append((track_id, generation, service.recognize(samples)))
+def recognize_face(service, sample, track_id, generation, results):
+    results.append((track_id, generation, service.recognize_face(sample)))
 
 
 def show_waiting(display):
@@ -98,28 +97,24 @@ def main():
                         continue
                     if face.ready:
                         if state.status is None and not state.running:
-                            state.samples.append(FaceSample(frame, face.rect))
-                    else:
-                        if state.samples:
                             state.generation += 1
-                        state.samples.clear()
+                            state.running = True
+                            state.status = "searching"
+                            threading.Thread(
+                                target=recognize_face,
+                                args=(
+                                    recognition,
+                                    FaceSample(frame, face.rect),
+                                    track_id,
+                                    state.generation,
+                                    recognition_results,
+                                ),
+                                daemon=True,
+                            ).start()
+                    else:
+                        if state.status is not None:
+                            state.generation += 1
                         state.status = None
-
-                    if len(state.samples) == BURST_SIZE and state.status is None and not state.running:
-                        state.generation += 1
-                        state.running = True
-                        state.status = "searching"
-                        threading.Thread(
-                            target=recognize_burst,
-                            args=(
-                                recognition,
-                                tuple(state.samples),
-                                track_id,
-                                state.generation,
-                                recognition_results,
-                            ),
-                            daemon=True,
-                        ).start()
 
                 matches = sum(bool(states[track_id].name) for track_id, _face in tracked_faces)
                 label = f"{len(tracked_faces)} FACES | {matches} CANDIDATE MATCHES"

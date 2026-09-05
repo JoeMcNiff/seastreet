@@ -76,11 +76,9 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(first_ids[100], second_ids[105])
         self.assertEqual(first_ids[300], second_ids[305])
 
-    def test_recognition_requires_three_samples(self):
+    def test_unconfigured_face_recognition_skips_providers(self):
         service = FacialRecognitionService()
-        self.assertEqual(service.recognize([object()] * 3).status, "pending_provider")
-        with self.assertRaises(ValueError):
-            service.recognize([object()] * 2)
+        self.assertEqual(service.recognize_face(object()).status, "pending_provider")
 
 
 if __name__ == "__main__":
