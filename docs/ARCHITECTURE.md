@@ -14,7 +14,7 @@ the UI.
 | `app/capture` | Start/stop the native camera helper, receive JPEG frames, maintain a short rolling buffer | Identity decisions |
 | `app/detection` | Detect visible faces and maintain anonymous subject tracks | Facial recognition or records access |
 | `app/workflow` | Validate the predicate, capture a burst, select frames, gate review, and coordinate state transitions | Provider-specific HTTP or database code |
-| `app/providers` | Call Clearview with the selected image and normalize the returned embedding | Local matching or human confirmation |
+| `app/providers` | Call Clearview `/embed` for each burst frame, validate the vectors, and produce one normalized query embedding | Local matching or human confirmation |
 | `app/records` | Search the Supabase vector image database locally, resolve the linked identity, and query synthetic records | Embedding generation |
 | `app/audit` | Persist append-only events with timestamps, actor, reason, subject, results, decisions, and disposition | UI presentation |
 | `app/ui` | Show live feed, subject selection, review, records, and logs | Search or records policy |
@@ -33,9 +33,9 @@ EventLog.append(event) -> event_id
 The intended Clearview path is:
 
 ```text
-selected still
-   -> ClearviewEmbeddingProvider (API key, outbound request)
-   -> embedding returned to the Mac process
+five original frames + OpenCV face rectangles
+   -> ClearviewEmbeddingProvider (five authenticated `/embed` requests)
+   -> averaged, L2-normalized query embedding
    -> SupabaseVectorStore (pgvector similarity search)
    -> linked synthetic identity candidate
 ```
@@ -101,8 +101,8 @@ must never silently fall back to real-person data.
 
 ## Open design questions
 
-1. What Clearview embedding endpoint, input format, model/version, rate limit,
-   and response schema will the provided API key use?
+1. What Clearview model/version and rate limit apply, and are OpenCV-generated
+   rectangles accepted directly by `/embed` without a preceding `/detect` call?
 2. What exact search predicate and reviewer role should the demo require?
 3. Should the operator interact with the Mac UI, the iPhone, or both? The
    current prototype has no iPhone control channel; it only streams camera

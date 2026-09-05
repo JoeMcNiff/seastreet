@@ -1,0 +1,16 @@
+{
+  "identities": [
+    {
+      "external_ref": "synthetic-person-001",
+      "display_name": "Synthetic Example",
+      "images": ["images/synthetic-person-001.jpg"],
+      "records": [
+        {
+          "external_ref": "synthetic-record-001",
+          "record_type": "demo",
+          "record_data": {"summary": "Fabricated demonstration record"}
+        }
+      ]
+    }
+  ]
+}
