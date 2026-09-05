@@ -26,8 +26,7 @@ TV, or `Q` / Escape to close it.
 The indicator turns green only after one frontal face—with both eyes visible—is
 stable for five frames. Those five detected frames are copied into a burst and
 passed once to the deterministic, synthetic demo provider. A returned mock
-candidate flashes the display border red/blue, plays one local alert sound, and
-shows **POSSIBLE MATCH - REVIEW REQUIRED**. Press `C` to confirm or `R` to
+candidate shows **POSSIBLE MATCH - REVIEW REQUIRED**. Press `C` to confirm or `R` to
 reject; neither action retrieves records yet. The service does not make a
 network request.
 

@@ -1,9 +1,8 @@
-"""Command-screen demo: live iPhone feed, mock alert, and human review."""
+"""Command-screen demo: live iPhone feed and human review."""
 
 import subprocess
 import threading
 import time
-from math import cos, pi, sin
 from collections import deque
 from pathlib import Path
 
@@ -39,15 +38,6 @@ def receive():
             state["number"] += 1
 
 
-def play_alert():
-    """Play one built-in macOS sound without blocking the camera loop."""
-    subprocess.Popen(
-        ["/usr/bin/afplay", "/System/Library/Sounds/Glass.aiff"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-
 def centered_card(image, headline, detail, color):
     """Draw a high-contrast status card that is readable from a TV."""
     height, width = image.shape[:2]
@@ -67,46 +57,6 @@ def centered_card(image, headline, detail, color):
     )
 
 
-def alert_border(image, started):
-    """Flash red and blue three times, then retain an amber review border."""
-    elapsed = time.monotonic() - started
-    if elapsed < 1.8:
-        color = (255, 80, 30) if int(elapsed / 0.3) % 2 == 0 else (30, 30, 255)
-    else:
-        color = (0, 190, 255)
-    height, width = image.shape[:2]
-    cv2.rectangle(image, (5, 5), (width - 6, height - 6), color, 14)
-    return color
-
-
-def draw_star(image, center, outer_radius=25):
-    """Draw one filled five-point wanted-level star."""
-    points = []
-    inner_radius = outer_radius * 0.46
-    for index in range(10):
-        radius = outer_radius if index % 2 == 0 else inner_radius
-        angle = -pi / 2 + index * pi / 5
-        points.append(
-            (
-                int(center[0] + radius * cos(angle)),
-                int(center[1] + radius * sin(angle)),
-            )
-        )
-    polygon = numpy.array(points, dtype=numpy.int32)
-    cv2.fillPoly(image, [polygon], (0, 195, 255))
-    cv2.polylines(image, [polygon], True, (20, 20, 20), 3, cv2.LINE_AA)
-
-
-def wanted_stars(image, count=5):
-    """Render the visual-only five-star alert level for a possible match."""
-    height, width = image.shape[:2]
-    spacing = max(50, min(68, width // 14))
-    start_x = width - spacing * count - 24
-    center_y = min(94, height - 42)
-    for index in range(count):
-        draw_star(image, (start_x + spacing * index, center_y))
-
-
 threading.Thread(target=receive, daemon=True).start()
 print("Waiting for Continuity Camera… Press Q or Escape to close; F toggles fullscreen.")
 
@@ -114,7 +64,6 @@ streak = 0
 last_number = -1
 recognition_started = False
 review_state = "WAITING_FOR_FACE"
-alert_started = None
 last_boxes = []
 last_reason = "WAITING FOR FACE"
 fullscreen = False
@@ -148,15 +97,12 @@ try:
                     face_snapshots.clear()
                     recognition_started = False
                     review_state = "WAITING_FOR_FACE"
-                    alert_started = None
 
                 if streak == 5 and not recognition_started:
                     result = recognition.recognize(list(face_snapshots))
                     recognition_started = True
                     if result.status == "mock_candidate_returned" and result.candidates:
                         review_state = "REVIEW_REQUIRED"
-                        alert_started = time.monotonic()
-                        play_alert()
 
             display = frame.copy()
             face_color = (70, 220, 120) if streak == 5 else (0, 180, 255)
@@ -170,13 +116,11 @@ try:
             )
 
             if review_state == "REVIEW_REQUIRED":
-                card_color = alert_border(display, alert_started)
-                wanted_stars(display)
                 centered_card(
                     display,
                     "POSSIBLE MATCH - REVIEW REQUIRED",
                     "Synthetic demo candidate  |  [C] Confirm  [R] Reject",
-                    card_color,
+                    (0, 190, 255),
                 )
             elif review_state == "CONFIRMED":
                 centered_card(
