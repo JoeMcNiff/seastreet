@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleExecutable</key><string>PhoneCamera</string>
+  <key>CFBundleIdentifier</key><string>com.seastreet.phone-camera</string>
+  <key>CFBundleName</key><string>iPhone Camera</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSCameraUsageDescription</key><string>Displays your iPhone camera in a Mac window.</string>
+  <key>NSCameraUseContinuityCameraDeviceType</key><true/>
+</dict></plist>
