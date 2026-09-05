@@ -56,6 +56,29 @@ and run:
 .venv/bin/python -m scripts.enroll_mock_faces data/mock_records/manifest.json
 ```
 
+To import images already in the Supabase bucket, organize them by identity:
+
+```text
+identity-images/
+├── jane-doe/
+│   ├── front.jpg
+│   └── alternate.png
+└── john-smith/
+    └── front.jpg
+```
+
+The top-level folder becomes the identity's `external_ref`; its readable form
+is used as the initial display name. Apply the latest migration, then run:
+
+```bash
+python -m scripts.import_bucket_faces
+```
+
+The importer downloads each JPEG/PNG, calls Clearview
+`/mlapi/v1/detect_and_embed`, and creates or reuses the identity, image, link,
+and embedding rows. It accepts exactly one face per image and skips unchanged
+images on later runs. Use `--force` to regenerate existing embeddings.
+
 ## Use frames in Python
 
 The viewer publishes frames only on `127.0.0.1:8765`. Read JPEG bytes without

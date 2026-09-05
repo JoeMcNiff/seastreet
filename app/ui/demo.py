@@ -11,7 +11,7 @@ import numpy
 
 from app.capture.camera_feed import opencv_frames
 from app.detection.face_detection import full_face
-from app.providers.face_recognition import FacialRecognitionService
+from app.providers.face_recognition import FaceSample, FacialRecognitionService
 
 ROOT = Path(__file__).resolve().parents[2]
 WINDOW = "iPhone Camera - Full Face Detection"
@@ -41,7 +41,7 @@ def main():
 
     display = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
     snapshots = deque(maxlen=5)
-    recognition = FacialRecognitionService()
+    recognition = FacialRecognitionService.from_environment()
     recognition_status = None
     last_frame_at = 0.0
     streak = 0
@@ -62,7 +62,7 @@ def main():
                 ready = streak == 5
 
                 if detected:
-                    snapshots.append(frame.copy())
+                    snapshots.append(FaceSample(frame.copy(), boxes[0]))
                 else:
                     snapshots.clear()
                     recognition_status = None
