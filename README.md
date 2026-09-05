@@ -4,11 +4,11 @@ A small native macOS window for Apple's Continuity Camera. There is no server
 and nothing to open on the iPhone.
 
 ```bash
-python3 main.py
+python3 -m app.ui.demo
 ```
 
-`bash run.sh` still works when you only want the unannotated native camera
-preview. Normally you do not need to run it separately because `main.py`
+Use `bash scripts/run.sh` when you only want the unannotated native camera
+preview. Normally you do not need to run it separately because the demo
 launches a fresh copy automatically.
 
 Allow camera access when macOS asks. The Mac and iPhone must use the same Apple
@@ -25,7 +25,7 @@ The viewer publishes frames only on `127.0.0.1:8765`. Read JPEG bytes without
 dependencies:
 
 ```python
-from camera_feed import jpeg_frames
+from app.capture.camera_feed import jpeg_frames
 
 for jpeg in jpeg_frames():
     print(len(jpeg))
@@ -34,7 +34,7 @@ for jpeg in jpeg_frames():
 Or receive decoded OpenCV arrays:
 
 ```python
-from camera_feed import opencv_frames
+from app.capture.camera_feed import opencv_frames
 
 for frame in opencv_frames():
     # frame is a NumPy BGR image
@@ -65,10 +65,6 @@ seastreet/
 ├── tests/
 │   ├── unit/
 │   └── integration/
-├── camera_feed.py     # compatibility shim for app/capture/camera_feed.py
-├── face_detection.py  # compatibility shim for app/detection/face_detection.py
-├── main.py            # compatibility entry point for app/ui/demo.py
-├── run.sh             # compatibility entry point for scripts/run.sh
 └── scripts/run.sh     # native camera build and launch script
 ```
 
