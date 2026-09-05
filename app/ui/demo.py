@@ -12,7 +12,7 @@ import numpy
 
 from app.capture.camera_feed import opencv_frames
 from app.detection.face_detection import FaceTracker, detect_faces
-from app.providers.face_recognition import FaceSample, FacialRecognitionService
+from app.providers.face_recognition import BURST_SIZE, FaceSample, FacialRecognitionService
 
 ROOT = Path(__file__).resolve().parents[2]
 WINDOW = "Camera - Face Detection"
@@ -25,7 +25,7 @@ def receive_frames(frames):
 
 @dataclass
 class PersonState:
-    snapshots: deque = field(default_factory=lambda: deque(maxlen=5))
+    samples: deque = field(default_factory=lambda: deque(maxlen=BURST_SIZE))
     generation: int = 0
     running: bool = False
     status: str = None
@@ -33,8 +33,8 @@ class PersonState:
     similarity: float = None
 
 
-def recognize_burst(service, snapshots, track_id, generation, results):
-    results.append((track_id, generation, service.recognize(snapshots)))
+def recognize_burst(service, samples, track_id, generation, results):
+    results.append((track_id, generation, service.recognize(samples)))
 
 
 def show_waiting(display):
@@ -98,14 +98,14 @@ def main():
                         continue
                     if face.ready:
                         if state.status is None and not state.running:
-                            state.snapshots.append(FaceSample(frame, face.rect))
+                            state.samples.append(FaceSample(frame, face.rect))
                     else:
-                        if state.snapshots:
+                        if state.samples:
                             state.generation += 1
-                        state.snapshots.clear()
+                        state.samples.clear()
                         state.status = None
 
-                    if len(state.snapshots) == 5 and state.status is None and not state.running:
+                    if len(state.samples) == BURST_SIZE and state.status is None and not state.running:
                         state.generation += 1
                         state.running = True
                         state.status = "searching"
@@ -113,7 +113,7 @@ def main():
                             target=recognize_burst,
                             args=(
                                 recognition,
-                                tuple(state.snapshots),
+                                tuple(state.samples),
                                 track_id,
                                 state.generation,
                                 recognition_results,

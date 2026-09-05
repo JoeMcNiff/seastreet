@@ -49,16 +49,16 @@ class IntegrationsTests(unittest.TestCase):
 
     def test_clearview_embeds_burst_concurrently(self):
         client = ClearviewClient("secret")
-        barrier = threading.Barrier(5, timeout=1)
+        barrier = threading.Barrier(3, timeout=1)
 
         def embed_frame(_frame, rect):
             barrier.wait()
             return rect
 
         client.embed_frame = embed_frame
-        samples = ((object(), index) for index in range(5))
+        samples = ((object(), index) for index in range(3))
 
-        self.assertEqual(client.embed_burst(samples), tuple(range(5)))
+        self.assertEqual(client.embed_burst(samples), tuple(range(3)))
 
     def test_clearview_detects_and_embeds_faces(self):
         requests = []
@@ -132,7 +132,7 @@ class IntegrationsTests(unittest.TestCase):
         class Embeddings:
             def embed_burst(self, samples):
                 self.samples = tuple(samples)
-                return (unit,) * 5
+                return (unit,) * 3
 
         class Matches:
             def match_embedding(self, embedding, threshold, limit):
@@ -145,7 +145,7 @@ class IntegrationsTests(unittest.TestCase):
 
         clearview, supabase = Embeddings(), Matches()
         service = FacialRecognitionService(clearview, supabase)
-        result = service.recognize([FaceSample(object(), (1, 2, 3, 4))] * 5)
+        result = service.recognize([FaceSample(object(), (1, 2, 3, 4))] * 3)
 
         self.assertEqual(result.status, "candidates_found")
         self.assertEqual([candidate["identity_id"] for candidate in result.candidates], ["one", "two"])

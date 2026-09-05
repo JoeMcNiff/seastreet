@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from app.providers.clearview import ClearviewClient, ClearviewError
 from app.records.supabase import SupabaseClient, SupabaseError
 
+BURST_SIZE = 3
+
 
 @dataclass(frozen=True)
 class FaceSample:
@@ -46,15 +48,15 @@ class FacialRecognitionService:
             int(os.environ.get("FACE_MATCH_LIMIT", "10")),
         )
 
-    def recognize(self, snapshots):
-        if len(snapshots) != 5:
-            raise ValueError("Facial recognition requires exactly five snapshots")
+    def recognize(self, samples):
+        if len(samples) != BURST_SIZE:
+            raise ValueError(f"Facial recognition requires exactly {BURST_SIZE} samples")
         if self.clearview is None:
             return RecognitionResult("pending_provider")
 
         try:
             embeddings = self.clearview.embed_burst(
-                (sample.frame, sample.rect) for sample in snapshots
+                (sample.frame, sample.rect) for sample in samples
             )
             query = self.average_embeddings(embeddings)
             matches = self.supabase.match_embedding(query, self.threshold, self.limit)

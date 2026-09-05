@@ -93,7 +93,7 @@ class ClearviewClient:
         return self.embed_bytes(jpeg.tobytes(), (x, y, width, height))
 
     def embed_burst(self, samples):
-        with ThreadPoolExecutor(max_workers=5) as workers:
+        with ThreadPoolExecutor(max_workers=3) as workers:
             return tuple(workers.map(lambda sample: self.embed_frame(*sample), samples))
 
     def _request(self, path, method="GET", body=None, content_type=None):

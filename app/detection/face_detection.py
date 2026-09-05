@@ -94,40 +94,40 @@ def detect_faces(frame):
     image = cv2.resize(frame, None, fx=scale, fy=scale) if scale < 1 else frame
     gray = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
     height, width = gray.shape
-    minimum = max(40, min(width, height) // 12)
-    faces = FACE.detectMultiScale(gray, 1.1, 4, minSize=(minimum, minimum))
+    minimum = max(36, min(width, height) // 14)
+    faces = FACE.detectMultiScale(gray, 1.1, 3, minSize=(minimum, minimum))
 
     results = []
     for x, y, face_width, face_height in faces:
         rect = tuple(round(value / scale) for value in (x, y, face_width, face_height))
-        margin = min(width, height) * 0.01
+        margin = min(width, height) * 0.005
         if (
             x < margin
             or y < margin
             or x + face_width > width - margin
             or y + face_height > height - margin
         ):
-            results.append(DetectedFace(rect, False, "SHOW FULL FACE"))
+            results.append(DetectedFace(rect, False, "FACE DETECTED"))
             continue
-        if face_height < height * 0.14:
-            results.append(DetectedFace(rect, False, "MOVE CLOSER"))
+        if face_height < height * 0.11:
+            results.append(DetectedFace(rect, False, "FACE DETECTED"))
             continue
 
-        upper_face = gray[y : y + round(face_height * 0.70), x : x + face_width]
+        upper_face = gray[y : y + round(face_height * 0.75), x : x + face_width]
         eyes = EYES.detectMultiScale(
             upper_face,
             1.1,
-            4,
-            minSize=(max(10, face_width // 12), max(8, face_height // 14)),
+            3,
+            minSize=(max(8, face_width // 14), max(6, face_height // 16)),
         )
         centers = sorted((ex + ew / 2, ey + eh / 2) for ex, ey, ew, eh in eyes)
         ready = any(
-            face_width * 0.18 < right[0] - left[0] < face_width * 0.78
-            and abs(right[1] - left[1]) < face_height * 0.23
-            and abs((right[0] + left[0]) / 2 - face_width / 2) < face_width * 0.25
+            face_width * 0.15 < right[0] - left[0] < face_width * 0.82
+            and abs(right[1] - left[1]) < face_height * 0.28
+            and abs((right[0] + left[0]) / 2 - face_width / 2) < face_width * 0.30
             for left, right in combinations(centers, 2)
         )
-        reason = "FULL FACE READY" if ready else "LOOK FORWARD"
+        reason = "FULL FACE READY" if ready else "FACE DETECTED"
         results.append(DetectedFace(rect, ready, reason))
 
     return tuple(results)

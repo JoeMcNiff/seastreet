@@ -40,6 +40,19 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertTrue(all(face.ready for face in results))
 
+    def test_unready_face_uses_neutral_status(self):
+        detector = type(
+            "Detector",
+            (),
+            {"detectMultiScale": lambda *_args, **_kwargs: ((100, 100, 40, 40),)},
+        )()
+
+        with patch("app.detection.face_detection.FACE", detector):
+            face = detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8))[0]
+
+        self.assertFalse(face.ready)
+        self.assertEqual(face.reason, "FACE DETECTED")
+
     def test_face_crop_is_padded_clamped_and_independent(self):
         frame = numpy.zeros((100, 100, 3), dtype=numpy.uint8)
         crop = DetectedFace((0, 0, 20, 20), True, "FULL FACE READY").crop(
@@ -63,11 +76,11 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(first_ids[100], second_ids[105])
         self.assertEqual(first_ids[300], second_ids[305])
 
-    def test_recognition_requires_five_snapshots(self):
+    def test_recognition_requires_three_samples(self):
         service = FacialRecognitionService()
-        self.assertEqual(service.recognize([object()] * 5).status, "pending_provider")
+        self.assertEqual(service.recognize([object()] * 3).status, "pending_provider")
         with self.assertRaises(ValueError):
-            service.recognize([object()] * 4)
+            service.recognize([object()] * 2)
 
 
 if __name__ == "__main__":
