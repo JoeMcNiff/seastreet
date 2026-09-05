@@ -3,6 +3,7 @@
 import subprocess
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -10,6 +11,7 @@ import numpy
 
 from app.capture.camera_feed import opencv_frames
 from app.detection.face_detection import full_face
+from app.providers.face_recognition import FacialRecognitionService
 
 ROOT = Path(__file__).resolve().parents[2]
 subprocess.run(
@@ -23,6 +25,8 @@ cv2.resizeWindow(window, 960, 640)
 
 state = {"frame": None, "seen": 0.0, "number": 0}
 lock = threading.Lock()
+face_snapshots = deque(maxlen=5)
+recognition = FacialRecognitionService()
 
 
 def receive():
@@ -38,6 +42,8 @@ print("Waiting for Continuity Camera… Press Q or Escape to close.")
 
 streak = 0
 last_number = -1
+recognition_started = False
+recognition_status = "WAITING FOR FACE"
 display = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
 
 try:
@@ -57,8 +63,22 @@ try:
             detected, boxes, reason = full_face(display)
             streak = min(streak + 1, 5) if detected else 0
             ready = streak == 5
+            if detected:
+                face_snapshots.append(frame.copy())
+            else:
+                face_snapshots.clear()
+                recognition_started = False
+                recognition_status = "WAITING FOR FACE"
+
+            if ready and not recognition_started:
+                burst = list(face_snapshots)
+                if len(burst) == 5:
+                    result = recognition.recognize(burst)
+                    recognition_started = True
+                    recognition_status = f"BURST SENT - {result.status.upper()}"
+
             color = (70, 220, 120) if ready else (0, 180, 255)
-            label = "FULL FACE READY" if ready else reason
+            label = recognition_status if recognition_started else ("FULL FACE READY" if ready else reason)
 
             for x, y, width, height in boxes:
                 cv2.rectangle(display, (x, y), (x + width, y + height), color, 3)

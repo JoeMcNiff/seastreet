@@ -16,8 +16,9 @@ Account, with Wi-Fi, Bluetooth, and Continuity Camera enabled. Keep the iPhone
 nearby and locked. Press `Q` or Escape to close the detection window.
 
 The indicator turns green only after one frontal face—with both eyes visible—is
-stable for several frames. This reduces false triggers before a future photo
-burst.
+stable for five frames. Those five detected frames are copied into a burst and
+passed once to the skeleton facial-recognition service. The service currently
+returns `pending_provider`; it does not make a network request yet.
 
 ## Use frames in Python
 
