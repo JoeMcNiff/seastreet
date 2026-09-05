@@ -3,6 +3,13 @@
 A small native macOS window for Apple's Continuity Camera. There is no server
 and nothing to open on the iPhone.
 
+Set up a Python 3.13 virtual environment and install the pinned desktop UI
+dependencies:
+
+    /Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13 -m venv .venv
+    source .venv/bin/activate
+    python3 -m pip install -r requirements.txt
+
 ```bash
 python3 -m app.ui.demo
 ```
@@ -13,12 +20,15 @@ launches a fresh copy automatically.
 
 Allow camera access when macOS asks. The Mac and iPhone must use the same Apple
 Account, with Wi-Fi, Bluetooth, and Continuity Camera enabled. Keep the iPhone
-nearby and locked. Press `Q` or Escape to close the detection window.
+nearby and locked. Press `F` to toggle the detection window fullscreen for a
+TV, or `Q` / Escape to close it.
 
 The indicator turns green only after one frontal face—with both eyes visible—is
 stable for five frames. Those five detected frames are copied into a burst and
-passed once to the skeleton facial-recognition service. The service currently
-returns `pending_provider`; it does not make a network request yet.
+passed once to the deterministic, synthetic demo provider. A returned mock
+candidate shows **POSSIBLE MATCH - REVIEW REQUIRED**. Press `C` to confirm or `R` to
+reject; neither action retrieves records yet. The service does not make a
+network request.
 
 ## Use frames in Python
 
