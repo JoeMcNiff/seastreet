@@ -65,10 +65,11 @@ seastreet/
 ├── tests/
 │   ├── unit/
 │   └── integration/
-├── camera_feed.py     # current feed client; migrate into app/capture later
-├── face_detection.py  # current local detector; migrate into app/detection later
-├── main.py            # current executable spike and compatibility entry point
-└── PhoneCamera.swift  # native camera helper launched by run.sh
+├── camera_feed.py     # compatibility shim for app/capture/camera_feed.py
+├── face_detection.py  # compatibility shim for app/detection/face_detection.py
+├── main.py            # compatibility entry point for app/ui/demo.py
+├── run.sh             # compatibility entry point for scripts/run.sh
+└── scripts/run.sh     # native camera build and launch script
 ```
 
 ### Runtime flow
