@@ -79,6 +79,7 @@ def main():
                     candidate = result.candidates[0]
                     state.name = candidate.get("display_name") or "Unknown person"
                     state.similarity = candidate["similarity"]
+                    camera.notify_match()
 
             if frame is not None:
                 last_frame_at = time.monotonic()

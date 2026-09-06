@@ -24,7 +24,8 @@ python -m app.ui.demo
 The terminal prints the iPhone camera URL. Keep the Mac and iPhone on the same
 Wi-Fi network, open that URL in Safari, and tap **Start Camera**. Keep Safari
 open and the iPhone unlocked while streaming. Press `Q` or Escape to close the
-laptop window. Allow incoming network connections if macOS asks.
+laptop window. Allow incoming network connections if macOS asks. The iPhone
+plays a short two-tone alert whenever a new candidate match is found.
 
 ### First-time iPhone certificate setup
 

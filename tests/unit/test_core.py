@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import numpy
 
-from app.capture.camera_feed import local_hostname
+from app.capture.camera_feed import WebRTCCamera, local_hostname
 from app.detection.face_detection import DetectedFace, FaceTracker, detect_faces
 from app.providers.face_recognition import FacialRecognitionService
 
@@ -27,6 +27,25 @@ class CoreTests(unittest.TestCase):
     @patch("app.capture.camera_feed.socket.gethostname", return_value="Demo-Mac.local")
     def test_camera_url_uses_local_hostname(self, _hostname):
         self.assertEqual(local_hostname(), "Demo-Mac.local")
+
+    def test_match_alert_is_sent_to_the_phone(self):
+        class Loop:
+            def call_soon_threadsafe(self, callback):
+                callback()
+
+        class Alerts:
+            readyState = "open"
+            messages = []
+
+            def send(self, message):
+                self.messages.append(message)
+
+        camera = WebRTCCamera()
+        camera._loop = Loop()
+        camera._alerts = Alerts()
+        camera.notify_match()
+
+        self.assertEqual(camera._alerts.messages, ["match"])
 
     def test_blank_image_has_no_face(self):
         self.assertEqual(detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8)), ())

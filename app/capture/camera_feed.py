@@ -29,6 +29,7 @@ class WebRTCCamera:
         self.setup_port = setup_port
         self.frames = deque(maxlen=1)
         self._peers = set()
+        self._alerts = None
         self._ready = threading.Event()
         self._loop = None
         self._stop = None
@@ -57,6 +58,14 @@ class WebRTCCamera:
             self._loop.call_soon_threadsafe(self._stop.set)
         if self._thread:
             self._thread.join(timeout=5)
+
+    def notify_match(self):
+        if self._loop:
+            self._loop.call_soon_threadsafe(self._send_match_alert)
+
+    def _send_match_alert(self):
+        if self._alerts and self._alerts.readyState == "open":
+            self._alerts.send("match")
 
     def _run(self):
         try:
@@ -87,7 +96,7 @@ class WebRTCCamera:
             await runner.cleanup()
 
     async def _index(self, _request):
-        return web.FileResponse(PHONE_PAGE)
+        return web.FileResponse(PHONE_PAGE, headers={"Cache-Control": "no-store"})
 
     async def _certificate(self, _request):
         return web.FileResponse(
@@ -107,6 +116,7 @@ class WebRTCCamera:
 
         await asyncio.gather(*(peer.close() for peer in tuple(self._peers)))
         self._peers.clear()
+        self._alerts = None
         peer = RTCPeerConnection()
         self._peers.add(peer)
 
@@ -114,6 +124,11 @@ class WebRTCCamera:
         def on_track(track):
             if track.kind == "video":
                 asyncio.create_task(self._receive(track))
+
+        @peer.on("datachannel")
+        def on_data_channel(channel):
+            if channel.label == "alerts":
+                self._alerts = channel
 
         @peer.on("connectionstatechange")
         async def on_connection_state_change():
