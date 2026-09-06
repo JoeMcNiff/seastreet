@@ -192,8 +192,8 @@ def main():
                     "records_unavailable": "records_error",
                 }[result.status]
                 message = {
-                    "records_found": f"Subject {track_id} synthetic records returned",
-                    "no_records": f"Subject {track_id} has no synthetic records",
+                    "records_found": f"Subject {track_id} records returned",
+                    "no_records": f"Subject {track_id} has no records",
                     "records_unavailable": f"Subject {track_id} records unavailable",
                 }[result.status]
                 log(

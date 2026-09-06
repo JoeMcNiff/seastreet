@@ -97,6 +97,29 @@ class SupabaseClient:
             )
         )
 
+    def list_criminal_records(self, page_size=1000):
+        records = []
+        while True:
+            rows = self._request(
+                "/rest/v1/criminal_records?select=id,identity_id"
+                f"&order=id&limit={page_size}&offset={len(records)}"
+            )
+            records.extend(rows)
+            if len(rows) < page_size:
+                return tuple(records)
+
+    def update_criminal_record(self, record_id, values):
+        rows = self._request(
+            "/rest/v1/criminal_records"
+            f"?id=eq.{quote(str(record_id), safe='')}",
+            method="PATCH",
+            payload=values,
+            headers={"Prefer": "return=representation"},
+        )
+        if not rows:
+            raise SupabaseError(f"Criminal record {record_id} was not updated")
+        return rows[0]
+
     def licenses_by_number(self, number):
         number = quote(str(number).strip(), safe="")
         return tuple(

@@ -1,4 +1,5 @@
 import unittest
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -177,34 +178,40 @@ class CoreTests(unittest.TestCase):
 
         self.assertIs(result, expected)
         self.assertEqual(decode.call_count, 2)
-        self.assertEqual(decode.call_args_list[1].kwargs, {"scale": 1.5})
+        self.assertEqual(decode.call_args_list[1].kwargs, {"scale": 2})
 
-    def test_license_lookup_runs_off_the_calling_thread(self):
-        scan = LicenseData("D1234567", first_name="JANE", state="MA", rect=(1, 2, 3, 4))
+    def test_license_scan_continues_during_lookup(self):
+        first = LicenseData("D1234567", state="MA", rect=(1, 2, 3, 4))
+        second = LicenseData("D7654321", state="MA", rect=(1, 2, 3, 4))
+        lookup_started = threading.Event()
+        finish_lookup = threading.Event()
 
         class DMV:
             def licenses_by_number(self, _number):
-                time.sleep(0.05)
-                return ({"number": "D1234567", "first_name": "JANE", "state": "MA"},)
+                lookup_started.set()
+                finish_lookup.wait(1)
+                return ({"number": _number, "state": "MA"},)
 
-        scanner = LicenseScanner(DMV(), interval=0, scanner=lambda _frame: scan)
+        scanner = LicenseScanner(DMV(), interval=0, scanner=lambda frame: frame)
         try:
-            started = time.monotonic()
-            scanner.submit(object())
-            self.assertLess(time.monotonic() - started, 0.01)
+            scanner.submit(first)
+            self.assertTrue(lookup_started.wait(1))
+            scanner.submit(second)
             deadline = time.monotonic() + 1
             results = []
             while time.monotonic() < deadline and not any(
-                result.status == "license_found" for result in results
+                result.scan == second for result in results
             ):
                 result = scanner.poll()
                 if result:
                     results.append(result)
                 time.sleep(0.001)
+            finish_lookup.set()
         finally:
+            finish_lookup.set()
             scanner.close()
 
-        self.assertEqual([result.status for result in results], ["searching", "license_found"])
+        self.assertTrue(any(result.scan == second for result in results))
 
     def test_face_id_survives_camera_motion_and_occlusion(self):
         tracker = FaceTracker()

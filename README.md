@@ -61,11 +61,12 @@ operator, unit, encounter, predicate, and log-path values can be set using the
 variables in `.env.example`.
 
 The same feed scans PDF417 barcodes on the back of US driver licenses and IDs.
-Barcode decoding runs locally five times per second on a separate worker. It
-tries the original image first, then retries with contrast enhancement and
-upscaling for small, dim, or unevenly lit barcodes. A
-decoded AAMVA license number is looked up in `public.licenses`, and the scanned
-name, dates, sex, and state are cross-referenced with the database record. The
+Barcode decoding runs locally ten times per second on a separate worker. It
+tries the original image first, then retries with contrast enhancement and 2x
+upscaling for small, dim, or unevenly lit barcodes. DMV lookup runs on another
+thread, so a slow request cannot pause scanning. A decoded AAMVA license number
+is looked up in `public.licenses`, and the scanned name, dates, sex, and state
+are cross-referenced with the database record. The
 license panel stays visible for eight seconds; face detection and recognition
 continue independently throughout the scan and lookup.
 
