@@ -1,5 +1,6 @@
-"""WebRTC camera preview with face detection and candidate matching."""
+"""Live camera preview with face detection and candidate matching."""
 
+import argparse
 import os
 import threading
 import time
@@ -11,7 +12,7 @@ import cv2
 import numpy
 
 from app.audit.evidence_log import EvidenceLog
-from app.capture.camera_feed import WebRTCCamera
+from app.capture.camera_feed import ContinuityCamera, WebRTCCamera
 from app.detection.face_detection import FaceDetectionWorker
 from app.detection.license_detection import LicenseScanner
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
@@ -59,7 +60,7 @@ def show_waiting(display):
     cv2.putText(display, "WAITING FOR CAMERA...", (220, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.8, BRAND_BLUE, 2, cv2.LINE_AA)
 
 
-def main():
+def main(camera_kind="webrtc"):
     session_id = str(uuid4())
     audit = EvidenceLog.from_environment()
     context = {
@@ -73,16 +74,19 @@ def main():
     def log(event_type, message, **fields):
         audit.append(event_type, message, **context, **fields)
 
-    camera = WebRTCCamera()
+    camera = ContinuityCamera() if camera_kind == "continuity" else WebRTCCamera()
     detector = None
     license_scanner = None
     try:
         camera.start()
         log("camera_session_started", "Field camera session activated")
-        print(f"First time only, install the certificate from {camera.certificate_url}")
-        print(f"On the iPhone, open {camera.camera_url}")
+        if camera_kind == "webrtc":
+            print(f"First time only, install the certificate from {camera.certificate_url}")
+            print(f"On the iPhone, open {camera.camera_url}")
+        else:
+            print("The native Continuity Camera helper is open on the Mac.")
         print(f"Audit log: {audit.path}")
-        print("Waiting for iPhone… Press Q or Escape to close.")
+        print(f"Waiting for {camera.name}… Press Q or Escape to close.")
         frames = camera.frames
         cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL | cv2.WINDOW_FREERATIO)
         cv2.resizeWindow(WINDOW, 1400, 600)
@@ -192,8 +196,8 @@ def main():
                     "records_unavailable": "records_error",
                 }[result.status]
                 message = {
-                    "records_found": f"Subject {track_id} synthetic records returned",
-                    "no_records": f"Subject {track_id} has no synthetic records",
+                    "records_found": f"Subject {track_id} records returned",
+                    "no_records": f"Subject {track_id} has no records",
                     "records_unavailable": f"Subject {track_id} records unavailable",
                 }[result.status]
                 log(
@@ -250,7 +254,7 @@ def main():
             if frame is not None:
                 if not stream_connected:
                     stream_connected = True
-                    log("camera_stream_connected", "iPhone WebRTC stream connected")
+                    log("camera_stream_connected", f"{camera.name} stream connected")
                 last_frame_at = time.monotonic()
                 detector.submit(frame)
                 license_scanner.submit(frame)
@@ -364,7 +368,7 @@ def main():
             elif time.monotonic() - last_frame_at > 2:
                 if stream_connected:
                     stream_connected = False
-                    log("camera_stream_disconnected", "iPhone WebRTC stream disconnected")
+                    log("camera_stream_disconnected", f"{camera.name} stream disconnected")
                 detector.reset()
                 tracked_faces = ()
                 for track_id, state in states.items():
@@ -416,4 +420,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--camera", choices=("webrtc", "continuity"), default="webrtc")
+    main(parser.parse_args().camera)

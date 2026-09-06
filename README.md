@@ -1,8 +1,8 @@
 # iPhone Camera
 
-An iPhone camera streams over WebRTC to the Python application on the Mac.
-The Mac displays and processes the video with OpenCV; Continuity Camera is not
-used.
+An iPhone camera streams to the Python application on the Mac. WebRTC is the
+default, with Apple Continuity Camera available as a fallback. Both sources use
+the same OpenCV detection, recognition, license, records, audit, and UI pipeline.
 
 ## Demo setup
 
@@ -27,6 +27,18 @@ open and the iPhone unlocked while streaming. Press `Q` or Escape to close the
 laptop window. Allow incoming network connections if macOS asks. The iPhone
 plays a short two-tone alert only when a matched person has a synthetic
 criminal record or a scanned license is missing, mismatched, or expired.
+
+To use Apple Continuity Camera instead of the phone webpage:
+
+```bash
+python -m app.ui.demo --camera continuity
+```
+
+Keep the iPhone nearby with Wi-Fi and Bluetooth enabled and signed in to the
+same Apple Account as the Mac. The first run compiles and opens a small native
+camera helper; grant it camera permission if macOS asks. The analyzed feed still
+appears in the main Python window. Phone alert sounds require the WebRTC page and
+are unavailable in Continuity mode.
 
 ### First-time iPhone certificate setup
 
@@ -61,11 +73,12 @@ operator, unit, encounter, predicate, and log-path values can be set using the
 variables in `.env.example`.
 
 The same feed scans PDF417 barcodes on the back of US driver licenses and IDs.
-Barcode decoding runs locally five times per second on a separate worker. It
-tries the original image first, then retries with contrast enhancement and
-upscaling for small, dim, or unevenly lit barcodes. A
-decoded AAMVA license number is looked up in `public.licenses`, and the scanned
-name, dates, sex, and state are cross-referenced with the database record. The
+Barcode decoding runs locally ten times per second on a separate worker. It
+tries the original image first, then retries with contrast enhancement and 2x
+upscaling for small, dim, or unevenly lit barcodes. DMV lookup runs on another
+thread, so a slow request cannot pause scanning. A decoded AAMVA license number
+is looked up in `public.licenses`, and the scanned name, dates, sex, and state
+are cross-referenced with the database record. The
 license panel stays visible for eight seconds; face detection and recognition
 continue independently throughout the scan and lookup.
 

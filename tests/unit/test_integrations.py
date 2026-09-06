@@ -9,6 +9,7 @@ from app.providers.face_recognition import FaceSample, FacialRecognitionService
 from app.detection.license_detection import LicenseData, lookup_license
 from app.records.criminal_records import CriminalRecordsService
 from app.records.supabase import SupabaseClient
+from scripts.update_mock_criminal_records import OFFENSES, details_for, update_all
 
 
 class Response:
@@ -140,6 +141,29 @@ class IntegrationsTests(unittest.TestCase):
         self.assertEqual(result.status, "records_found")
         self.assertTrue(result.records[0]["active_warrant"])
         self.assertIn("criminal_records?identity_id=eq.person-1", requests[0].full_url)
+
+    def test_mock_criminal_records_are_consistent(self):
+        for record_id in range(1, len(OFFENSES) + 1):
+            values = details_for(record_id)
+            self.assertLessEqual(values["conviction_count"], values["arrest_count"])
+            self.assertEqual(bool(values["warrant_number"]), values["active_warrant"])
+            self.assertEqual(bool(values["warrant_issue_date"]), values["active_warrant"])
+            if not values["active_warrant"]:
+                self.assertEqual(values["wanted_level"], 0)
+
+    def test_mock_criminal_record_update_writes_every_record(self):
+        class Client:
+            updates = []
+
+            def list_criminal_records(self):
+                return ({"id": 1}, {"id": 2})
+
+            def update_criminal_record(self, record_id, values):
+                self.updates.append((record_id, values))
+
+        client = Client()
+        self.assertEqual(update_all(True, client), 2)
+        self.assertEqual([record_id for record_id, _values in client.updates], [1, 2])
 
     def test_missing_criminal_records_are_not_reported_as_an_error(self):
         client = SupabaseClient(

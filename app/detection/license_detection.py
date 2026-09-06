@@ -79,8 +79,8 @@ def scan_license(frame):
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
     enhanced = CLAHE.apply(gray)
-    enhanced = cv2.resize(enhanced, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
-    return _decode(enhanced, scale=1.5)
+    enhanced = cv2.resize(enhanced, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    return _decode(enhanced, scale=2)
 
 
 def _decode(frame, scale=1):
@@ -119,9 +119,9 @@ def lookup_license(supabase, scan):
 
 
 class LicenseScanner:
-    """Scan only the newest frame on a throttled background thread."""
+    """Decode newest frames continuously and run DMV lookups independently."""
 
-    def __init__(self, supabase, interval=0.2, scanner=scan_license):
+    def __init__(self, supabase, interval=0.1, scanner=scan_license):
         self._supabase = supabase
         self._interval = interval
         self._scanner = scanner
@@ -131,6 +131,7 @@ class LicenseScanner:
         self._stop = threading.Event()
         self._next_scan = 0
         self._last_key = None
+        self._generation = 0
         self._rect = None
         self._seen_at = 0
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -145,10 +146,11 @@ class LicenseScanner:
         self._wake.set()
 
     def poll(self):
-        try:
-            return self._results.popleft()
-        except IndexError:
-            return None
+        while self._results:
+            generation, result = self._results.popleft()
+            if generation == self._generation:
+                return result
+        return None
 
     def visible_rect(self):
         return self._rect if time.monotonic() - self._seen_at < 1 else None
@@ -177,8 +179,16 @@ class LicenseScanner:
             if scan.key == self._last_key:
                 continue
             self._last_key = scan.key
-            self._results.append(LicenseResult("searching", scan))
-            self._results.append(lookup_license(self._supabase, scan))
+            self._generation += 1
+            generation = self._generation
+            self._results.append((generation, LicenseResult("searching", scan)))
+            threading.Thread(
+                target=self._lookup, args=(generation, scan), daemon=True
+            ).start()
+
+    def _lookup(self, generation, scan):
+        result = lookup_license(self._supabase, scan)
+        self._results.append((generation, result))
 
 
 def _date(value):

@@ -51,7 +51,7 @@ def _draw_panel(panel, states, selected_track_id, events, license_result):
         if len(matched_ids) > 1:
             _text(panel, "TAB cycles matched subjects", left, 150, MUTED, 0.4)
         records_top = 182
-        _text(panel, "SYNTHETIC CRIMINAL RECORDS", left, records_top, BLUE, 0.48, 2)
+        _text(panel, "CRIMINAL RECORDS", left, records_top, BLUE, 0.48, 2)
         _draw_records(panel, state, left, records_top + 29)
     else:
         _text(panel, "WAITING FOR IDENTITY MATCH", left, 78, WHITE, 0.48)

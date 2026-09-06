@@ -1,13 +1,16 @@
-"""Receive an iPhone camera stream over WebRTC."""
+"""Receive iPhone camera frames over WebRTC or Continuity Camera."""
 
 import asyncio
 import socket
 import ssl
+import struct
 import subprocess
 import threading
 from collections import deque
 from pathlib import Path
 
+import cv2
+import numpy
 from aiohttp import web
 from aiortc import (
     MediaStreamError,
@@ -20,6 +23,8 @@ from aiortc import (
 ROOT = Path(__file__).resolve().parents[2]
 CERT_DIR = ROOT / ".camera-feed"
 PHONE_PAGE = Path(__file__).with_name("phone.html")
+CONTINUITY_RUNNER = ROOT / "scripts/run_continuity.sh"
+MAX_FRAME_BYTES = 10_000_000
 
 
 def local_hostname():
@@ -28,6 +33,8 @@ def local_hostname():
 
 
 class WebRTCCamera:
+    name = "iPhone WebRTC"
+
     def __init__(self, host="0.0.0.0", https_port=8443, setup_port=8080):
         self.host = host
         self.https_port = https_port
@@ -175,3 +182,63 @@ class WebRTCCamera:
                 self.frames.append(frame.to_ndarray(format="bgr24"))
         except (MediaStreamError, asyncio.CancelledError):
             pass
+
+
+class ContinuityCamera:
+    """Receive JPEG frames from the native macOS Continuity Camera helper."""
+
+    name = "Continuity Camera"
+
+    def __init__(self, host="127.0.0.1", port=8765):
+        self.host = host
+        self.port = port
+        self.frames = deque(maxlen=1)
+        self._stop = threading.Event()
+        self._connection = None
+        self._thread = None
+
+    def start(self):
+        subprocess.run(["/bin/bash", str(CONTINUITY_RUNNER)], check=True)
+        self._thread = threading.Thread(target=self._receive, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._connection:
+            self._connection.close()
+        if self._thread:
+            self._thread.join(timeout=2)
+        subprocess.run(["pkill", "-x", "PhoneCamera"], check=False)
+
+    def notify_alert(self):
+        pass
+
+    def _receive(self):
+        while not self._stop.is_set():
+            try:
+                with socket.create_connection((self.host, self.port), timeout=1) as connection:
+                    self._connection = connection
+                    while not self._stop.is_set():
+                        size = struct.unpack("!I", self._read(connection, 4))[0]
+                        if not 0 < size <= MAX_FRAME_BYTES:
+                            raise ConnectionError("Invalid Continuity Camera frame size")
+                        jpeg = self._read(connection, size)
+                        frame = cv2.imdecode(
+                            numpy.frombuffer(jpeg, dtype=numpy.uint8), cv2.IMREAD_COLOR
+                        )
+                        if frame is not None:
+                            self.frames.append(frame)
+            except (ConnectionError, OSError, struct.error):
+                self._stop.wait(0.25)
+            finally:
+                self._connection = None
+
+    @staticmethod
+    def _read(connection, size):
+        data = bytearray()
+        while len(data) < size:
+            chunk = connection.recv(size - len(data))
+            if not chunk:
+                raise ConnectionError("Continuity Camera helper disconnected")
+            data.extend(chunk)
+        return data
