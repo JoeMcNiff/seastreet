@@ -75,7 +75,7 @@ class SupabaseClient:
             "image_id,provider,model_version",
         )
 
-    def match_embedding(self, embedding, threshold=0.47, limit=10):
+    def match_embedding(self, embedding, threshold=0.40, limit=10):
         return tuple(
             self._request(
                 "/rest/v1/rpc/match_identity_embeddings",
@@ -92,7 +92,8 @@ class SupabaseClient:
         identity_id = quote(str(identity_id), safe="")
         return tuple(
             self._request(
-                f"/rest/v1/criminal_records?identity_id=eq.{identity_id}&select=*"
+                f"/rest/v1/criminal_records?identity_id=eq.{identity_id}"
+                "&select=*&order=created_at.desc"
             )
         )
 
@@ -167,6 +168,7 @@ class SupabaseClient:
 
     def health(self):
         self._request("/rest/v1/identities?select=id&limit=1")
+        self._request("/rest/v1/criminal_records?select=id&limit=1")
         return True
 
     def _request(self, path, method="GET", payload=None, headers=None, raw=False):

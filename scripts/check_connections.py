@@ -9,7 +9,7 @@ def main():
         health = ClearviewClient.from_environment().health()
         print(f"Clearview: online={health.online}, ready={health.ready}")
         SupabaseClient.from_environment().health()
-        print("Supabase: connected")
+        print("Supabase: connected (identities + criminal_records)")
     except ValueError as error:
         raise SystemExit(f"Configuration error: {error}")
 

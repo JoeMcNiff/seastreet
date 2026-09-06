@@ -1,10 +1,12 @@
 import json
 import unittest
 
+import cv2
 import numpy
 
 from app.providers.clearview import ClearviewClient, ClearviewError, ClearviewNoFace
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
+from app.records.criminal_records import CriminalRecordsService
 from app.records.supabase import SupabaseClient
 
 
@@ -47,13 +49,23 @@ class IntegrationsTests(unittest.TestCase):
         with self.assertRaises(ClearviewError):
             client.embed_bytes(b"jpeg", (1, 2, 30, 40))
 
-    def test_camera_face_rectangle_is_padded(self):
+    def test_camera_face_is_uploaded_as_a_padded_crop(self):
         client = ClearviewClient("secret")
-        client.embed_bytes = lambda _image, rect: rect
+        uploaded = {}
+
+        def embed(image, rect):
+            uploaded["image"] = image
+            return rect
+
+        client.embed_bytes = embed
 
         rect = client.embed_frame(numpy.zeros((100, 100, 3), dtype=numpy.uint8), (10, 10, 20, 20))
+        crop = cv2.imdecode(
+            numpy.frombuffer(uploaded["image"], dtype=numpy.uint8), cv2.IMREAD_COLOR
+        )
 
-        self.assertEqual(rect, (6.0, 6.0, 28.0, 28.0))
+        self.assertEqual(crop.shape[:2], (34, 34))
+        self.assertEqual(rect, (7, 7, 20, 20))
 
     def test_clearview_detects_and_embeds_faces(self):
         requests = []
@@ -106,6 +118,40 @@ class IntegrationsTests(unittest.TestCase):
         self.assertTrue(requests[0].full_url.endswith("/rest/v1/rpc/match_identity_embeddings"))
         self.assertEqual(requests[0].get_header("Authorization"), "Bearer key")
 
+    def test_criminal_records_are_looked_up_by_matched_identity(self):
+        requests = []
+
+        def open_request(request, timeout):
+            requests.append(request)
+            return Response(
+                [
+                    {
+                        "identity_id": "person-1",
+                        "active_warrant": True,
+                        "primary_offense": "Synthetic offense",
+                    }
+                ]
+            )
+
+        client = SupabaseClient("https://example.supabase.co", "key", opener=open_request)
+        result = CriminalRecordsService(client).lookup("person-1")
+
+        self.assertEqual(result.status, "records_found")
+        self.assertTrue(result.records[0]["active_warrant"])
+        self.assertIn("criminal_records?identity_id=eq.person-1", requests[0].full_url)
+
+    def test_missing_criminal_records_are_not_reported_as_an_error(self):
+        client = SupabaseClient(
+            "https://example.supabase.co",
+            "key",
+            opener=lambda *_args, **_kwargs: Response([]),
+        )
+
+        result = CriminalRecordsService(client).lookup("person-1")
+
+        self.assertEqual(result.status, "no_records")
+        self.assertEqual(result.records, ())
+
     def test_supabase_lists_bucket_recursively(self):
         responses = iter(
             (
@@ -120,6 +166,20 @@ class IntegrationsTests(unittest.TestCase):
         files = client.list_bucket_files()
 
         self.assertEqual(files[0]["path"], "person-one/face.jpg")
+
+    def test_supabase_health_checks_identity_and_record_access(self):
+        requests = []
+        client = SupabaseClient(
+            "https://example.supabase.co",
+            "key",
+            opener=lambda request, timeout: requests.append(request) or Response([]),
+        )
+
+        self.assertTrue(client.health())
+        self.assertTrue(requests[0].full_url.endswith("identities?select=id&limit=1"))
+        self.assertTrue(
+            requests[1].full_url.endswith("criminal_records?select=id&limit=1")
+        )
 
     def test_face_embedding_is_matched_and_grouped_by_identity(self):
         unit = tuple([1.0] + [0.0] * 511)

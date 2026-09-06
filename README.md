@@ -24,7 +24,8 @@ python -m app.ui.demo
 The terminal prints the iPhone camera URL. Keep the Mac and iPhone on the same
 Wi-Fi network, open that URL in Safari, and tap **Start Camera**. Keep Safari
 open and the iPhone unlocked while streaming. Press `Q` or Escape to close the
-laptop window. Allow incoming network connections if macOS asks.
+laptop window. Allow incoming network connections if macOS asks. The iPhone
+plays a short two-tone alert whenever a new candidate match is found.
 
 ### First-time iPhone certificate setup
 
@@ -44,25 +45,37 @@ in the ignored `.camera-feed/` directory on the Mac.
 Each detected face gets its own box and is searched independently; multiple
 people can be searched concurrently. Candidate names and scores
 remain attached to their tracked faces through brief movement or occlusion.
-Detection uses OpenCV YuNet and does not require visible eye landmarks.
+Detection uses OpenCV YuNet at up to 960 pixels on the frame's long side,
+smooths tracked boxes, and does not require visible eye landmarks. Before each
+recognition request, the live workflow keeps up to five small face crops for
+about 0.16 seconds and sends only the sharpest one; this is still one Clearview
+request rather than a burst.
 Without API credentials the service
 returns `pending_provider` and makes no network request.
 
+The right-side panel shows the selected matched identity, its associated
+synthetic criminal records, and the live event timeline. Record lookup starts
+automatically after an identity match. Press `Tab` to cycle through multiple
+matched people. Events are appended to `data/audit/events.jsonl`; optional
+operator, unit, encounter, predicate, and log-path values can be set using the
+variables in `.env.example`.
+
 ## Clearview and Supabase
 
-Apply `supabase/migrations/001_face_embeddings.sql` to the existing Supabase
-schema, then fill in `.env`. Python loads it automatically:
+Apply the SQL files in `supabase/migrations/` in numeric order to the existing
+Supabase schema, then fill in `.env`. Migration `002` adds the criminal-record
+fields used by the side panel. Python loads `.env` automatically:
 
 ```bash
 python -m scripts.check_connections
 ```
 
-The live workflow sends one frame and its OpenCV face rectangle to Clearview
-`/mlapi/v1/embed`. It sends the returned vector to the Supabase
+The live workflow sends a padded face crop and its crop-relative OpenCV
+rectangle to Clearview `/mlapi/v1/embed`. It sends the returned vector to the Supabase
 `match_identity_embeddings` RPC and
-returns the strongest image match per identity. It does not use Clearview
-`/detect`, and it does not retrieve criminal records without a later human
-review step.
+returns the strongest image match per identity. It then queries synthetic
+criminal records using the matched `identity_id`. It does not use Clearview
+`/detect`.
 
 To import images already in the Supabase bucket, organize them by identity:
 

@@ -11,6 +11,7 @@ from app.records.supabase import SupabaseClient, SupabaseError
 class FaceSample:
     frame: object
     rect: tuple
+    source_rect: tuple = None
 
 
 @dataclass(frozen=True)
