@@ -1,55 +1,144 @@
-"""Simple full-frontal-face check using OpenCV's bundled classifiers."""
+"""Fast multi-angle face detection and tracking."""
 
+from dataclasses import dataclass
+from math import hypot
 from pathlib import Path
 
 import cv2
 
-
-DATA = Path(cv2.data.haarcascades)
-FACE = cv2.CascadeClassifier(str(DATA / "haarcascade_frontalface_default.xml"))
-EYES = cv2.CascadeClassifier(str(DATA / "haarcascade_eye_tree_eyeglasses.xml"))
+MODEL = Path(__file__).parent / "models/face_detection_yunet_2023mar.onnx"
+DETECTOR = cv2.FaceDetectorYN.create(str(MODEL), "", (480, 320), 0.6, 0.3, 500)
 
 
-def full_face(frame):
-    """Return (is_ready, face_boxes, reason) for one unobstructed frontal face."""
-    source_width = frame.shape[1]
-    scale = min(1.0, 640 / source_width)
+@dataclass(frozen=True)
+class DetectedFace:
+    rect: tuple
+    ready: bool
+    reason: str
+
+    def crop(self, frame, padding=0.15):
+        """Return an independent, padded copy of this face."""
+        x, y, width, height = self.rect
+        x_pad, y_pad = round(width * padding), round(height * padding)
+        left, top = max(0, x - x_pad), max(0, y - y_pad)
+        right = min(frame.shape[1], x + width + x_pad)
+        bottom = min(frame.shape[0], y + height + y_pad)
+        return frame[top:bottom, left:right].copy()
+
+
+class FaceTracker:
+    """Keep IDs stable through camera movement and brief occlusion."""
+
+    def __init__(self, min_similarity=0.35, max_missed=45):
+        self.min_similarity = min_similarity
+        self.max_missed = max_missed
+        self._next_id = 1
+        self._tracks = {}
+
+    @property
+    def active_ids(self):
+        return self._tracks.keys()
+
+    def clear(self):
+        self._tracks.clear()
+
+    def update(self, faces):
+        existing = set(self._tracks)
+        candidates = sorted(
+            (
+                (
+                    max(
+                        _similarity(rect, face.rect),
+                        _similarity(_move(rect, velocity, missed + 1), face.rect),
+                    ),
+                    track_id,
+                    index,
+                )
+                for track_id, (rect, missed, velocity) in self._tracks.items()
+                for index, face in enumerate(faces)
+            ),
+            reverse=True,
+        )
+        assignments = {}
+        matched = set()
+        for similarity, track_id, index in candidates:
+            if similarity < self.min_similarity:
+                break
+            if track_id not in matched and index not in assignments:
+                assignments[index] = track_id
+                matched.add(track_id)
+                old_rect, _missed, old_velocity = self._tracks[track_id]
+                velocity = _velocity(old_rect, faces[index].rect, old_velocity)
+                self._tracks[track_id] = (faces[index].rect, 0, velocity)
+
+        for track_id in existing - matched:
+            rect, missed, velocity = self._tracks[track_id]
+            if missed >= self.max_missed:
+                del self._tracks[track_id]
+            else:
+                self._tracks[track_id] = (rect, missed + 1, velocity)
+
+        for index, face in enumerate(faces):
+            if index not in assignments:
+                assignments[index] = self._next_id
+                self._tracks[self._next_id] = (face.rect, 0, (0, 0))
+                self._next_id += 1
+
+        return tuple((assignments[index], face) for index, face in enumerate(faces))
+
+
+def _overlap(first, second):
+    ax, ay, aw, ah = first
+    bx, by, bw, bh = second
+    width = max(0, min(ax + aw, bx + bw) - max(ax, bx))
+    height = max(0, min(ay + ah, by + bh) - max(ay, by))
+    intersection = width * height
+    return intersection / (aw * ah + bw * bh - intersection)
+
+
+def _similarity(first, second):
+    ax, ay, aw, ah = first
+    bx, by, bw, bh = second
+    distance = hypot(ax + aw / 2 - bx - bw / 2, ay + ah / 2 - by - bh / 2)
+    proximity = max(0, 1 - distance / (2 * max(aw, ah, bw, bh)))
+    size = min(aw * ah, bw * bh) / max(aw * ah, bw * bh)
+    return max(_overlap(first, second), 0.7 * proximity + 0.3 * size)
+
+
+def _move(rect, velocity, frames):
+    x, y, width, height = rect
+    return x + velocity[0] * frames, y + velocity[1] * frames, width, height
+
+
+def _velocity(old_rect, new_rect, old_velocity):
+    old_x, old_y, old_width, old_height = old_rect
+    new_x, new_y, new_width, new_height = new_rect
+    dx = new_x + new_width / 2 - old_x - old_width / 2
+    dy = new_y + new_height / 2 - old_y - old_height / 2
+    return (old_velocity[0] + dx) / 2, (old_velocity[1] + dy) / 2
+
+
+def detect_faces(frame):
+    """Detect faces without requiring frontal eye landmarks."""
+    scale = min(1.0, 480 / frame.shape[1])
     image = cv2.resize(frame, None, fx=scale, fy=scale) if scale < 1 else frame
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-    height, width = gray.shape
-    minimum = max(70, min(width, height) // 7)
-    faces = FACE.detectMultiScale(gray, 1.1, 6, minSize=(minimum, minimum))
-    boxes = [tuple(round(value / scale) for value in face) for face in faces]
+    height, width = image.shape[:2]
+    DETECTOR.setInputSize((width, height))
+    _count, faces = DETECTOR.detect(image)
+    if faces is None:
+        return ()
 
-    if not boxes:
-        return False, boxes, "NO FACE"
-    if len(boxes) > 1:
-        return False, boxes, "ONE PERSON ONLY"
+    results = []
+    frame_height, frame_width = frame.shape[:2]
+    for x, y, face_width, face_height in faces[:, :4]:
+        left = max(0, round(x / scale))
+        top = max(0, round(y / scale))
+        right = min(frame_width, round((x + face_width) / scale))
+        bottom = min(frame_height, round((y + face_height) / scale))
+        if right <= left or bottom <= top:
+            continue
+        results.append(
+            DetectedFace((left, top, right - left, bottom - top), True, "SEARCHING...")
+        )
 
-    x, y, w, h = map(int, faces[0])
-    margin = min(width, height) * 0.025
-    if x < margin or y < margin or x + w > width - margin or y + h > height - margin:
-        return False, boxes, "SHOW YOUR FULL FACE"
-    if h < height * 0.20:
-        return False, boxes, "MOVE CLOSER"
-
-    # A level, well-spaced eye pair is a useful lightweight proxy for a face
-    # that is looking forward rather than turned away or heavily obstructed.
-    upper_face = gray[y : y + int(h * 0.62), x : x + w]
-    eyes = EYES.detectMultiScale(
-        upper_face,
-        1.1,
-        6,
-        minSize=(max(12, w // 10), max(8, h // 12)),
-    )
-    centers = sorted((ex + ew / 2, ey + eh / 2) for ex, ey, ew, eh in eyes)
-    for left_index, left in enumerate(centers):
-        for right in centers[left_index + 1 :]:
-            separation = right[0] - left[0]
-            level = abs(right[1] - left[1])
-            midpoint = (right[0] + left[0]) / 2
-            if w * 0.25 < separation < w * 0.70 and level < h * 0.16 and abs(midpoint - w / 2) < w * 0.16:
-                return True, boxes, "FULL FACE READY"
-
-    return False, boxes, "LOOK FORWARD - SHOW BOTH EYES"
+    return tuple(results)

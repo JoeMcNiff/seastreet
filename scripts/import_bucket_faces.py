@@ -4,19 +4,11 @@ import argparse
 import hashlib
 import mimetypes
 import os
-from pathlib import PurePosixPath
-
-import cv2
-import numpy
 
 from app.providers.clearview import ClearviewClient, ClearviewError
 from app.records.supabase import SupabaseClient, SupabaseError
 
 SUPPORTED_TYPES = {"image/jpeg", "image/png"}
-
-
-def display_name(identity_ref):
-    return identity_ref.replace("_", " ").replace("-", " ").strip().title()
 
 
 def import_bucket(bucket="identity-images", prefix="", force=False):
@@ -33,15 +25,14 @@ def import_bucket(bucket="identity-images", prefix="", force=False):
     imported = unchanged = skipped = 0
     for item in objects:
         path = item["path"]
-        parts = PurePosixPath(path).parts
+        parts = path.split("/")
         if len(parts) < 2:
             print(f"SKIP {path}: expected <identity-ref>/<image-file>")
             skipped += 1
             continue
 
         identity_ref = parts[0]
-        metadata = item.get("metadata") or {}
-        content_type = metadata.get("mimetype") or mimetypes.guess_type(path)[0]
+        content_type = (item.get("metadata") or {}).get("mimetype") or mimetypes.guess_type(path)[0]
         if content_type not in SUPPORTED_TYPES:
             print(f"SKIP {path}: Clearview accepts JPEG or PNG")
             skipped += 1
@@ -53,10 +44,10 @@ def import_bucket(bucket="identity-images", prefix="", force=False):
             image = supabase.image_by_storage_path(path, bucket)
             identity = supabase.identity_by_external_ref(identity_ref)
             if identity is None:
-                identity = supabase.upsert_identity(identity_ref, display_name(identity_ref))
+                name = identity_ref.replace("_", " ").replace("-", " ").strip().title()
+                identity = supabase.upsert_identity(identity_ref, name)
 
-            current = image and image.get("sha256") == checksum
-            if current and not force and supabase.has_embedding(
+            if image and image.get("sha256") == checksum and not force and supabase.has_embedding(
                 image["id"], model_version=model_version
             ):
                 supabase.link_image(identity["id"], image["id"])
@@ -70,17 +61,12 @@ def import_bucket(bucket="identity-images", prefix="", force=False):
                 skipped += 1
                 continue
 
-            decoded = cv2.imdecode(numpy.frombuffer(content, dtype=numpy.uint8), cv2.IMREAD_COLOR)
-            if decoded is None:
-                raise ValueError("could not decode image")
             face = faces[0]
             image = supabase.upsert_image(
                 path,
                 content_type,
                 bucket,
                 sha256=checksum,
-                width=decoded.shape[1],
-                height=decoded.shape[0],
                 face_rect=list(face.rect),
             )
             supabase.link_image(identity["id"], image["id"])

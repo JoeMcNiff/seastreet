@@ -4,28 +4,43 @@ import subprocess
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy
 
 from app.capture.camera_feed import opencv_frames
-from app.detection.face_detection import full_face
+from app.detection.face_detection import FaceTracker, detect_faces
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 
 ROOT = Path(__file__).resolve().parents[2]
-WINDOW = "iPhone Camera - Full Face Detection"
+WINDOW = "Camera - Face Detection"
+SEARCH_RETRY_SECONDS = 4.0
 
 
 def receive_frames(frames):
-    for frame in opencv_frames(startup_timeout=None):
+    for frame in opencv_frames():
         frames.append(frame)
+
+
+@dataclass
+class PersonState:
+    generation: int = 0
+    running: bool = False
+    status: str = None
+    name: str = None
+    similarity: float = None
+    retry_at: float = 0
+
+
+def recognize_face(service, sample, track_id, generation, results):
+    results.append((track_id, generation, service.recognize_face(sample)))
 
 
 def show_waiting(display):
     display[:] = 12
-    cv2.putText(display, "WAITING FOR IPHONE CAMERA...", (220, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 180, 255), 2, cv2.LINE_AA)
-    cv2.putText(display, "Keep the iPhone nearby and locked", (305, 395), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1, cv2.LINE_AA)
+    cv2.putText(display, "WAITING FOR CAMERA...", (220, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 180, 255), 2, cv2.LINE_AA)
 
 
 def main():
@@ -40,13 +55,13 @@ def main():
     cv2.resizeWindow(WINDOW, 960, 640)
 
     display = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
-    snapshots = deque(maxlen=5)
+    tracker = FaceTracker()
     recognition = FacialRecognitionService.from_environment()
-    recognition_status = None
+    recognition_results = deque()
+    states = {}
     last_frame_at = 0.0
-    streak = 0
 
-    print("Waiting for Continuity Camera… Press Q or Escape to close.")
+    print("Waiting for Camera… Press Q or Escape to close.")
     try:
         while True:
             try:
@@ -54,33 +69,102 @@ def main():
             except IndexError:
                 frame = None
 
+            while recognition_results:
+                track_id, generation, result = recognition_results.popleft()
+                state = states.get(track_id)
+                if state is None:
+                    continue
+                if generation != state.generation:
+                    continue
+                state.running = False
+                if result.error:
+                    print(f"Recognition error for face {track_id}: {result.error}")
+                if result.status in ("retry_face", "no_match", "provider_error"):
+                    state.status = None
+                    state.retry_at = time.monotonic() + (
+                        0.75 if result.status == "retry_face" else SEARCH_RETRY_SECONDS
+                    )
+                    continue
+                state.status = result.status
+                if result.candidates:
+                    candidate = result.candidates[0]
+                    state.name = candidate.get("display_name") or "Unknown person"
+                    state.similarity = candidate["similarity"]
+
             if frame is not None:
                 last_frame_at = time.monotonic()
                 display = frame.copy()
-                detected, boxes, reason = full_face(display)
-                streak = min(streak + 1, 5) if detected else 0
-                ready = streak == 5
+                tracked_faces = tracker.update(detect_faces(display))
+                active_ids = set(tracker.active_ids)
+                for track_id in states.keys() - active_ids:
+                    del states[track_id]
 
-                if detected:
-                    snapshots.append(FaceSample(frame.copy(), boxes[0]))
-                else:
-                    snapshots.clear()
-                    recognition_status = None
+                for track_id, face in tracked_faces:
+                    state = states.setdefault(track_id, PersonState())
+                    if state.name:
+                        continue
+                    if face.ready:
+                        now = time.monotonic()
+                        if state.running and now >= state.retry_at:
+                            state.running = False
+                            state.status = None
+                        if (
+                            state.status is None
+                            and not state.running
+                            and now >= state.retry_at
+                        ):
+                            state.generation += 1
+                            state.running = True
+                            state.status = "searching"
+                            state.retry_at = now + SEARCH_RETRY_SECONDS
+                            threading.Thread(
+                                target=recognize_face,
+                                args=(
+                                    recognition,
+                                    FaceSample(frame, face.rect),
+                                    track_id,
+                                    state.generation,
+                                    recognition_results,
+                                ),
+                                daemon=True,
+                            ).start()
+                    else:
+                        if state.status is not None:
+                            state.generation += 1
+                        state.running = False
+                        state.status = None
 
-                if ready and recognition_status is None and len(snapshots) == 5:
-                    result = recognition.recognize(list(snapshots))
-                    recognition_status = f"BURST SENT - {result.status.upper()}"
-
-                color = (70, 220, 120) if ready else (0, 180, 255)
-                label = recognition_status or ("FULL FACE READY" if ready else reason)
-                for x, y, width, height in boxes:
-                    cv2.rectangle(display, (x, y), (x + width, y + height), color, 3)
+                matches = sum(bool(states[track_id].name) for track_id, _face in tracked_faces)
+                label = f"{len(tracked_faces)} FACES | {matches} IN-FRAME MATCHES"
+                color = (70, 220, 120) if matches else (0, 180, 255)
+                for track_id, face in tracked_faces:
+                    state = states[track_id]
+                    x, y, width, height = face.rect
+                    box_color = (70, 220, 120) if face.ready or state.name else (0, 180, 255)
+                    cv2.rectangle(display, (x, y), (x + width, y + height), box_color, 3)
+                    if state.name:
+                        face_label = f"{state.name} ({state.similarity:.2f})"
+                    elif state.running:
+                        face_label = "SEARCHING..."
+                    elif state.status:
+                        face_label = state.status.replace("_", " ").upper()
+                    else:
+                        face_label = face.reason
+                    cv2.putText(
+                        display,
+                        face_label,
+                        (x, max(24, y - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55,
+                        box_color,
+                        2,
+                        cv2.LINE_AA,
+                    )
                 cv2.rectangle(display, (0, 0), (display.shape[1], 54), (20, 20, 20), -1)
                 cv2.putText(display, label, (18, 37), cv2.FONT_HERSHEY_SIMPLEX, 0.85, color, 2, cv2.LINE_AA)
             elif time.monotonic() - last_frame_at > 2:
-                streak = 0
-                snapshots.clear()
-                recognition_status = None
+                tracker.clear()
+                states.clear()
                 show_waiting(display)
 
             cv2.imshow(WINDOW, display)

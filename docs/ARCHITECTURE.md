@@ -13,8 +13,8 @@ the UI.
 | --- | --- | --- |
 | `app/capture` | Start/stop the native camera helper, receive JPEG frames, maintain a short rolling buffer | Identity decisions |
 | `app/detection` | Detect visible faces and maintain anonymous subject tracks | Facial recognition or records access |
-| `app/workflow` | Validate the predicate, capture a burst, select frames, gate review, and coordinate state transitions | Provider-specific HTTP or database code |
-| `app/providers` | Call Clearview `/embed` for each burst frame, validate the vectors, and produce one normalized query embedding | Local matching or human confirmation |
+| `app/workflow` | Validate the predicate, capture a face, gate review, and coordinate state transitions | Provider-specific HTTP or database code |
+| `app/providers` | Call Clearview `/embed`, validate the vector, and search for identity candidates | Local matching or human confirmation |
 | `app/records` | Search the Supabase vector image database locally, resolve the linked identity, and query synthetic records | Embedding generation |
 | `app/audit` | Persist append-only events with timestamps, actor, reason, subject, results, decisions, and disposition | UI presentation |
 | `app/ui` | Show live feed, subject selection, review, records, and logs | Search or records policy |
@@ -33,9 +33,9 @@ EventLog.append(event) -> event_id
 The intended Clearview path is:
 
 ```text
-five original frames + OpenCV face rectangles
-   -> ClearviewEmbeddingProvider (five authenticated `/embed` requests)
-   -> averaged, L2-normalized query embedding
+one original frame + OpenCV face rectangle
+   -> ClearviewEmbeddingProvider (one authenticated `/embed` request)
+   -> L2-normalized query embedding
    -> SupabaseVectorStore (pgvector similarity search)
    -> linked synthetic identity candidate
 ```
@@ -52,7 +52,7 @@ events.
 IDLE
   -> SUBJECT_SELECTED
   -> PREDICATE_RECORDED
-  -> BURST_CAPTURED
+  -> FACE_CAPTURED
   -> CANDIDATE_RETURNED
   -> HUMAN_CONFIRMED | HUMAN_REJECTED
   -> RECORDS_RETURNED
@@ -92,7 +92,7 @@ must never silently fall back to real-person data.
 
 1. Extract the current feed client and detector behind `FrameSource` and
    `SubjectTracker` without changing the working camera launch path.
-2. Add a rolling buffer, subject selection, reason form, and burst capture.
+2. Add subject selection, reason form, and face capture.
 3. Implement mock provider, human review, synthetic records, and audit events
    as one end-to-end vertical slice.
 4. Build the demo UI around the same session state and live event stream.

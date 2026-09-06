@@ -2,7 +2,6 @@
 
 import json
 import math
-import mimetypes
 import os
 import uuid
 from dataclasses import dataclass
@@ -17,9 +16,11 @@ DEFAULT_URL = "https://ip-10-200-46-204.tail5891d.ts.net"
 
 
 class ClearviewError(RuntimeError):
-    def __init__(self, message, status_code=None):
-        super().__init__(message)
-        self.status_code = status_code
+    pass
+
+
+class ClearviewNoFace(ClearviewError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,6 @@ class HealthStatus:
 class EmbeddedFace:
     rect: tuple
     confidence: float
-    landmarks: tuple
     embedding: tuple
 
 
@@ -88,25 +88,16 @@ class ClearviewClient:
 
         x, y, width, height = self._validate_rect(rect)
         frame_height, frame_width = frame.shape[:2]
-        if x < 0 or y < 0 or x + width > frame_width or y + height > frame_height:
+        x_pad, y_pad = width * 0.2, height * 0.2
+        left, top = max(0, x - x_pad), max(0, y - y_pad)
+        right = min(frame_width, x + width + x_pad)
+        bottom = min(frame_height, y + height + y_pad)
+        if right <= left or bottom <= top:
             raise ValueError("Face rectangle is outside the image")
         encoded, jpeg = cv2.imencode(".jpg", frame)
         if not encoded:
             raise ClearviewError("Could not encode camera frame")
-        return self.embed_bytes(jpeg.tobytes(), (x, y, width, height))
-
-    def embed_file(self, path, rect):
-        path = Path(path)
-        content_type = mimetypes.guess_type(path.name)[0]
-        return self.embed_bytes(path.read_bytes(), rect, path.name, content_type)
-
-    def detect_and_embed_file(self, path):
-        path = Path(path)
-        content_type = mimetypes.guess_type(path.name)[0]
-        return self.detect_and_embed_bytes(path.read_bytes(), path.name, content_type)
-
-    def embed_burst(self, samples):
-        return tuple(self.embed_frame(frame, rect) for frame, rect in samples)
+        return self.embed_bytes(jpeg.tobytes(), (left, top, right - left, bottom - top))
 
     def _request(self, path, method="GET", body=None, content_type=None):
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
@@ -118,7 +109,9 @@ class ClearviewClient:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
-            raise ClearviewError(detail or error.reason, error.code) from error
+            if error.code == 422 and '"no_face"' in detail:
+                raise ClearviewNoFace("Clearview could not use this face frame") from error
+            raise ClearviewError(f"HTTP {error.code}: {detail or error.reason}") from error
         except (URLError, TimeoutError) as error:
             raise ClearviewError(f"Clearview request failed: {error}") from error
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -146,15 +139,11 @@ class ClearviewClient:
     def _validate_face(cls, face):
         try:
             confidence = float(face["confidence"])
-            landmarks = tuple(tuple(float(value) for value in point) for point in face["landmarks"])
-            if not math.isfinite(confidence) or len(landmarks) != 5:
-                raise ValueError
-            if any(len(point) != 2 or not all(math.isfinite(value) for value in point) for point in landmarks):
+            if not math.isfinite(confidence):
                 raise ValueError
             return EmbeddedFace(
                 cls._validate_rect(face["rect"]),
                 confidence,
-                landmarks,
                 cls._validate_embedding(face["embedding"]),
             )
         except (KeyError, TypeError, ValueError) as error:

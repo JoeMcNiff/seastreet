@@ -16,8 +16,6 @@ create unique index if not exists identities_external_ref_idx
 
 alter table public.identity_images
   add column if not exists sha256 text,
-  add column if not exists width integer check (width > 0),
-  add column if not exists height integer check (height > 0),
   add column if not exists face_rect real[] check (array_length(face_rect, 1) = 4);
 
 create unique index if not exists identity_images_sha256_idx
@@ -45,13 +43,20 @@ alter table public.criminal_records
 create unique index if not exists criminal_records_external_ref_idx
   on public.criminal_records (external_ref);
 
-create or replace function public.match_identity_embeddings(
+drop function if exists public.match_identity_embeddings(
+  extensions.vector,
+  double precision,
+  integer
+);
+
+create function public.match_identity_embeddings(
   query_embedding extensions.vector(512),
   match_threshold double precision default 0.47,
   match_count integer default 10
 )
 returns table (
   identity_id uuid,
+  display_name text,
   image_id uuid,
   similarity double precision
 )
@@ -61,6 +66,7 @@ security invoker
 set search_path = public, extensions
 as $$
   select links.identity_id,
+         identities.display_name,
          embeddings.image_id,
          1 - (embeddings.embedding <=> query_embedding) as similarity
     from public.image_embeddings as embeddings
