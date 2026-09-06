@@ -16,6 +16,7 @@ from app.providers.face_recognition import FaceSample, FacialRecognitionService
 
 ROOT = Path(__file__).resolve().parents[2]
 WINDOW = "Camera - Face Detection"
+SEARCH_RETRY_SECONDS = 4.0
 
 
 def receive_frames(frames):
@@ -73,13 +74,15 @@ def main():
                 state = states.get(track_id)
                 if state is None:
                     continue
-                state.running = False
                 if generation != state.generation:
                     continue
-                if result.status in ("retry_face", "no_match"):
+                state.running = False
+                if result.error:
+                    print(f"Recognition error for face {track_id}: {result.error}")
+                if result.status in ("retry_face", "no_match", "provider_error"):
                     state.status = None
                     state.retry_at = time.monotonic() + (
-                        2.0 if result.status == "no_match" else 0.75
+                        0.75 if result.status == "retry_face" else SEARCH_RETRY_SECONDS
                     )
                     continue
                 state.status = result.status
@@ -87,8 +90,6 @@ def main():
                     candidate = result.candidates[0]
                     state.name = candidate.get("display_name") or "Unknown person"
                     state.similarity = candidate["similarity"]
-                if result.error:
-                    print(f"Recognition error for face {track_id}: {result.error}")
 
             if frame is not None:
                 last_frame_at = time.monotonic()
@@ -103,14 +104,19 @@ def main():
                     if state.name:
                         continue
                     if face.ready:
+                        now = time.monotonic()
+                        if state.running and now >= state.retry_at:
+                            state.running = False
+                            state.status = None
                         if (
                             state.status is None
                             and not state.running
-                            and time.monotonic() >= state.retry_at
+                            and now >= state.retry_at
                         ):
                             state.generation += 1
                             state.running = True
                             state.status = "searching"
+                            state.retry_at = now + SEARCH_RETRY_SECONDS
                             threading.Thread(
                                 target=recognize_face,
                                 args=(
@@ -125,10 +131,11 @@ def main():
                     else:
                         if state.status is not None:
                             state.generation += 1
+                        state.running = False
                         state.status = None
 
                 matches = sum(bool(states[track_id].name) for track_id, _face in tracked_faces)
-                label = f"{len(tracked_faces)} FACES | {matches} In FRAME MATCHES"
+                label = f"{len(tracked_faces)} FACES | {matches} IN-FRAME MATCHES"
                 color = (70, 220, 120) if matches else (0, 180, 255)
                 for track_id, face in tracked_faces:
                     state = states[track_id]
