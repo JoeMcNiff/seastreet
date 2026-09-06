@@ -1,3 +1,4 @@
+import json
 import unittest
 import threading
 import time
@@ -7,7 +8,12 @@ from unittest.mock import patch
 import numpy
 import zxingcpp
 
-from app.capture.camera_feed import ContinuityCamera, WebRTCCamera, local_hostname
+from app.capture.camera_feed import (
+    ContinuityCamera,
+    WebRTCCamera,
+    _profile_message,
+    local_hostname,
+)
 from app.detection.face_detection import (
     DetectedFace,
     FaceDetectionWorker,
@@ -79,6 +85,28 @@ class CoreTests(unittest.TestCase):
         camera.notify_alert()
 
         self.assertEqual(camera._alerts.messages, ["alert"])
+
+    def test_criminal_profile_message_contains_form_fields(self):
+        photo = numpy.zeros((80, 60, 3), dtype=numpy.uint8)
+        message = json.loads(
+            _profile_message(
+                "Jane Doe",
+                0.81,
+                {
+                    "id": 4,
+                    "active_warrant": True,
+                    "primary_offense": "Aggravated assault",
+                    "ignored": "private metadata",
+                },
+                photo,
+            )
+        )
+
+        self.assertEqual(message["type"], "criminal_profile")
+        self.assertEqual(message["name"], "Jane Doe")
+        self.assertTrue(message["record"]["active_warrant"])
+        self.assertNotIn("ignored", message["record"])
+        self.assertTrue(message["photo"])
 
     def test_only_records_and_bad_licenses_trigger_alerts(self):
         self.assertIn("records_found", ALERT_STATUSES)

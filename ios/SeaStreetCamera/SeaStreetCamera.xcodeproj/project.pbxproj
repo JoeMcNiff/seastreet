@@ -12,6 +12,9 @@
 		100000000000000000000003 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* CameraPreview.swift */; };
 		100000000000000000000004 /* CameraClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* CameraClient.swift */; };
 		100000000000000000000005 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000002 /* WebRTC */; };
+		100000000000000000000006 /* CriminalProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* CriminalProfile.swift */; };
+		100000000000000000000007 /* CriminalProfileCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* CriminalProfileCard.swift */; };
+		100000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,6 +24,9 @@
 		200000000000000000000004 /* CameraClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraClient.swift; sourceTree = "<group>"; };
 		200000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		200000000000000000000006 /* SeaStreetCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SeaStreetCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000007 /* CriminalProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriminalProfile.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* CriminalProfileCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriminalProfileCard.swift; sourceTree = "<group>"; };
+		200000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,6 +56,9 @@
 				200000000000000000000002 /* CameraScreen.swift */,
 				200000000000000000000003 /* CameraPreview.swift */,
 				200000000000000000000004 /* CameraClient.swift */,
+				200000000000000000000007 /* CriminalProfile.swift */,
+				200000000000000000000008 /* CriminalProfileCard.swift */,
+				200000000000000000000009 /* Assets.xcassets */,
 				200000000000000000000005 /* Info.plist */,
 			);
 			path = SeaStreetCamera;
@@ -127,6 +136,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				100000000000000000000008 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -141,6 +151,8 @@
 				100000000000000000000002 /* CameraScreen.swift in Sources */,
 				100000000000000000000003 /* CameraPreview.swift in Sources */,
 				100000000000000000000004 /* CameraClient.swift in Sources */,
+				100000000000000000000006 /* CriminalProfile.swift in Sources */,
+				100000000000000000000007 /* CriminalProfileCard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,8 +195,9 @@
 		A00000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 6C8YDAM6TQ;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SeaStreetCamera/Info.plist;
@@ -203,8 +216,9 @@
 		A00000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 6C8YDAM6TQ;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = SeaStreetCamera/Info.plist;

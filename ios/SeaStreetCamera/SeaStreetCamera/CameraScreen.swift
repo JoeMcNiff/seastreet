@@ -80,8 +80,21 @@ struct CameraScreen: View {
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+
+            if let profile = camera.criminalProfile {
+                VStack {
+                    Spacer()
+                    CriminalProfileCard(profile: profile) {
+                        camera.criminalProfile = nil
+                    }
+                }
+                .padding(12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(2)
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: camera.showingAlert)
+        .animation(.easeInOut(duration: 0.25), value: camera.criminalProfile?.id)
         .onDisappear { camera.stop() }
     }
 }

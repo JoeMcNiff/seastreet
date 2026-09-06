@@ -1,4 +1,4 @@
-# SeaStreet native camera
+# Robin Cam
 
 1. On the Mac, activate the Python environment and run:
 
@@ -13,7 +13,7 @@
 5. In the phone app, enter the Mac hostname printed by Python and tap
    **Start Camera**.
 
-The app captures the rear camera at 1080p/30 fps, sends up to 8 Mbps over WebRTC,
+Robin Cam captures the rear camera at 1080p/30 fps, sends up to 8 Mbps over WebRTC,
 and plays the same record and invalid-license alerts as the browser client. Keep
 the app foregrounded and both devices on the same local network.
 

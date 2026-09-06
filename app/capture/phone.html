@@ -2,7 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>SeaStreet Camera</title>
+<title>Robin Cam</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #000000; color: white; font: 17px system-ui; }
@@ -79,11 +79,11 @@
     }
     const alerts = candidate.createDataChannel("alerts");
     alerts.addEventListener("message", event => {
-      if (event.data === "alert") playAlertSound();
+      if (event.data === "alert" || event.data.includes('"type":"criminal_profile"')) playAlertSound();
     });
     candidate.addEventListener("connectionstatechange", () => {
       if (candidate !== peer) return;
-      status.textContent = candidate.connectionState === "connected" ? "Connected to laptop" : candidate.connectionState;
+      status.textContent = candidate.connectionState === "connected" ? "Connected to Remote Server" : candidate.connectionState;
       if (candidate.connectionState === "connected") clearTimeout(reconnectTimer);
       else if (["failed", "disconnected", "closed"].includes(candidate.connectionState)) retry();
     });

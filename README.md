@@ -21,12 +21,13 @@ After that, run the demo with:
 python -m app.ui.demo
 ```
 
-### Native iPhone app
+### Robin Cam native iPhone app
 
-The native Swift app uses the rear iPhone camera at 1080p/30 fps and sends the
+Robin Cam uses the rear iPhone camera at 1080p/30 fps and sends the
 same WebRTC feed to the existing Python receiver. It also receives the existing
-record and invalid-license alerts, including sound and haptics. The Safari page
-remains available as a zero-install fallback.
+record and invalid-license alerts, including sound and haptics. Criminal-record
+matches display the recognition face crop and record summary in a dismissible
+document-style sheet. The Safari page remains available as a zero-install fallback.
 
 First, start the laptop receiver as usual:
 

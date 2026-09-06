@@ -9,6 +9,7 @@ final class CameraClient: NSObject, ObservableObject {
     @Published private(set) var started = false
     @Published private(set) var connected = false
     @Published private(set) var showingAlert = false
+    @Published var criminalProfile: CriminalProfile?
     @Published private(set) var videoTrack: RTCVideoTrack?
 
     private let factory: RTCPeerConnectionFactory
@@ -213,12 +214,13 @@ final class CameraClient: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
-    private func alert() {
+    private func alert(profile: CriminalProfile? = nil) {
         AudioServicesPlaySystemSound(1025)
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
         DispatchQueue.main.async {
+            if let profile { self.criminalProfile = profile }
             self.showingAlert = true
-            self.status = "Alert detected"
+            self.status = profile == nil ? "Alert detected" : "Criminal record found"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 self.showingAlert = false
             }
@@ -322,7 +324,7 @@ extension CameraClient: RTCPeerConnectionDelegate {
         switch newState {
         case .connected:
             connecting = false
-            publish("Connected to laptop", connected: true)
+            publish("Connected to Remote Server", connected: true)
         case .failed, .disconnected, .closed:
             connecting = false
             scheduleReconnect("Connection \(String(describing: newState))")
@@ -341,6 +343,10 @@ extension CameraClient: RTCDataChannelDelegate {
     ) {
         if String(data: buffer.data, encoding: .utf8) == "alert" {
             alert()
+        } else if let profile = try? JSONDecoder().decode(
+            CriminalProfile.self, from: buffer.data
+        ), profile.type == "criminal_profile" {
+            alert(profile: profile)
         }
     }
 }
