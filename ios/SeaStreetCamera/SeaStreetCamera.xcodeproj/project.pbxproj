@@ -15,6 +15,7 @@
 		100000000000000000000006 /* CriminalProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* CriminalProfile.swift */; };
 		100000000000000000000007 /* CriminalProfileCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* CriminalProfileCard.swift */; };
 		100000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* Assets.xcassets */; };
+		100000000000000000000009 /* WarrantAlert.wav in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* WarrantAlert.wav */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 		200000000000000000000007 /* CriminalProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriminalProfile.swift; sourceTree = "<group>"; };
 		200000000000000000000008 /* CriminalProfileCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriminalProfileCard.swift; sourceTree = "<group>"; };
 		200000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		20000000000000000000000A /* WarrantAlert.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = WarrantAlert.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +61,7 @@
 				200000000000000000000007 /* CriminalProfile.swift */,
 				200000000000000000000008 /* CriminalProfileCard.swift */,
 				200000000000000000000009 /* Assets.xcassets */,
+				20000000000000000000000A /* WarrantAlert.wav */,
 				200000000000000000000005 /* Info.plist */,
 			);
 			path = SeaStreetCamera;
@@ -137,6 +140,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000008 /* Assets.xcassets in Resources */,
+				100000000000000000000009 /* WarrantAlert.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

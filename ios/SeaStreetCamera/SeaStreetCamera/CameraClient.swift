@@ -21,6 +21,14 @@ final class CameraClient: NSObject, ObservableObject {
     private var offerSent = false
     private var connecting = false
     private var reconnect: DispatchWorkItem?
+    private lazy var warrantSound: SystemSoundID = {
+        guard let url = Bundle.main.url(
+            forResource: "WarrantAlert", withExtension: "wav"
+        ) else { return 1025 }
+        var sound: SystemSoundID = 0
+        AudioServicesCreateSystemSoundID(url as CFURL, &sound)
+        return sound
+    }()
 
     override init() {
         RTCPeerConnectionFactory.initialize()
@@ -215,9 +223,16 @@ final class CameraClient: NSObject, ObservableObject {
     }
 
     private func alert(profile: CriminalProfile? = nil) {
-        AudioServicesPlaySystemSound(1025)
-        UINotificationFeedbackGenerator().notificationOccurred(.warning)
         DispatchQueue.main.async {
+            let pulses = profile == nil ? 1 : 4
+            AudioServicesPlaySystemSound(
+                profile == nil ? 1025 : self.warrantSound
+            )
+            for index in 0..<pulses {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.18) {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                }
+            }
             if let profile { self.criminalProfile = profile }
             self.showingAlert = true
             self.status = profile == nil ? "Alert detected" : "Criminal record found"
