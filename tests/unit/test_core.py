@@ -7,7 +7,7 @@ from unittest.mock import patch
 import numpy
 import zxingcpp
 
-from app.capture.camera_feed import WebRTCCamera, local_hostname
+from app.capture.camera_feed import ContinuityCamera, WebRTCCamera, local_hostname
 from app.detection.face_detection import (
     DetectedFace,
     FaceDetectionWorker,
@@ -51,6 +51,15 @@ class CoreTests(unittest.TestCase):
     @patch("app.capture.camera_feed.socket.gethostname", return_value="Demo-Mac.local")
     def test_camera_url_uses_local_hostname(self, _hostname):
         self.assertEqual(local_hostname(), "Demo-Mac.local")
+
+    def test_continuity_camera_reads_split_frame_data(self):
+        class Connection:
+            chunks = iter((b"jp", b"e", b"g"))
+
+            def recv(self, _size):
+                return next(self.chunks)
+
+        self.assertEqual(ContinuityCamera._read(Connection(), 4), b"jpeg")
 
     def test_actionable_alert_is_sent_to_the_phone(self):
         class Loop:

@@ -1,8 +1,8 @@
 # iPhone Camera
 
-An iPhone camera streams over WebRTC to the Python application on the Mac.
-The Mac displays and processes the video with OpenCV; Continuity Camera is not
-used.
+An iPhone camera streams to the Python application on the Mac. WebRTC is the
+default, with Apple Continuity Camera available as a fallback. Both sources use
+the same OpenCV detection, recognition, license, records, audit, and UI pipeline.
 
 ## Demo setup
 
@@ -27,6 +27,18 @@ open and the iPhone unlocked while streaming. Press `Q` or Escape to close the
 laptop window. Allow incoming network connections if macOS asks. The iPhone
 plays a short two-tone alert only when a matched person has a synthetic
 criminal record or a scanned license is missing, mismatched, or expired.
+
+To use Apple Continuity Camera instead of the phone webpage:
+
+```bash
+python -m app.ui.demo --camera continuity
+```
+
+Keep the iPhone nearby with Wi-Fi and Bluetooth enabled and signed in to the
+same Apple Account as the Mac. The first run compiles and opens a small native
+camera helper; grant it camera permission if macOS asks. The analyzed feed still
+appears in the main Python window. Phone alert sounds require the WebRTC page and
+are unavailable in Continuity mode.
 
 ### First-time iPhone certificate setup
 

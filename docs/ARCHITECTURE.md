@@ -11,7 +11,7 @@ the UI.
 
 | Component | Responsibility | Does not own |
 | --- | --- | --- |
-| `app/capture` | Receive the iPhone's WebRTC stream and maintain only the latest decoded frame | Identity decisions |
+| `app/capture` | Receive WebRTC or Continuity Camera frames and retain only the latest decoded frame | Identity decisions |
 | `app/detection` | Detect and track faces; locally decode ID PDF417 barcodes on isolated latest-frame workers | Facial recognition decisions |
 | `app/workflow` | Coordinate capture, matching, records lookup, and state transitions | Provider-specific HTTP or database code |
 | `app/providers` | Call Clearview `/embed`, validate the vector, and search for identity candidates | Criminal-record storage |
@@ -89,7 +89,7 @@ must never silently fall back to real-person data.
 
 ## Implementation order
 
-1. Keep the WebRTC receiver and detector behind `FrameSource` and
+1. Keep the camera receivers and detector behind `FrameSource` and
    `SubjectTracker` contracts.
 2. Add the reason/predicate configuration and face capture.
 3. Implement synthetic records and audit events as one end-to-end vertical
