@@ -19,6 +19,10 @@ class ClearviewError(RuntimeError):
     pass
 
 
+class ClearviewNoFace(ClearviewError):
+    pass
+
+
 @dataclass(frozen=True)
 class HealthStatus:
     online: bool
@@ -84,12 +88,16 @@ class ClearviewClient:
 
         x, y, width, height = self._validate_rect(rect)
         frame_height, frame_width = frame.shape[:2]
-        if x < 0 or y < 0 or x + width > frame_width or y + height > frame_height:
+        x_pad, y_pad = width * 0.2, height * 0.2
+        left, top = max(0, x - x_pad), max(0, y - y_pad)
+        right = min(frame_width, x + width + x_pad)
+        bottom = min(frame_height, y + height + y_pad)
+        if right <= left or bottom <= top:
             raise ValueError("Face rectangle is outside the image")
         encoded, jpeg = cv2.imencode(".jpg", frame)
         if not encoded:
             raise ClearviewError("Could not encode camera frame")
-        return self.embed_bytes(jpeg.tobytes(), (x, y, width, height))
+        return self.embed_bytes(jpeg.tobytes(), (left, top, right - left, bottom - top))
 
     def _request(self, path, method="GET", body=None, content_type=None):
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
@@ -101,6 +109,8 @@ class ClearviewClient:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
+            if error.code == 422 and '"no_face"' in detail:
+                raise ClearviewNoFace("Clearview could not use this face frame") from error
             raise ClearviewError(f"HTTP {error.code}: {detail or error.reason}") from error
         except (URLError, TimeoutError) as error:
             raise ClearviewError(f"Clearview request failed: {error}") from error

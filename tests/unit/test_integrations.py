@@ -1,7 +1,9 @@
 import json
 import unittest
 
-from app.providers.clearview import ClearviewClient, ClearviewError
+import numpy
+
+from app.providers.clearview import ClearviewClient, ClearviewError, ClearviewNoFace
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 from app.records.supabase import SupabaseClient
 
@@ -44,6 +46,14 @@ class IntegrationsTests(unittest.TestCase):
         )
         with self.assertRaises(ClearviewError):
             client.embed_bytes(b"jpeg", (1, 2, 30, 40))
+
+    def test_camera_face_rectangle_is_padded(self):
+        client = ClearviewClient("secret")
+        client.embed_bytes = lambda _image, rect: rect
+
+        rect = client.embed_frame(numpy.zeros((100, 100, 3), dtype=numpy.uint8), (10, 10, 20, 20))
+
+        self.assertEqual(rect, (6.0, 6.0, 28.0, 28.0))
 
     def test_clearview_detects_and_embeds_faces(self):
         requests = []
@@ -128,13 +138,29 @@ class IntegrationsTests(unittest.TestCase):
                     {"identity_id": "two", "image_id": "c", "similarity": 0.7},
                 )
 
+            def identity_name(self, identity_id):
+                return {"one": "Person One", "two": "Person Two"}[identity_id]
+
         clearview, supabase = Embeddings(), Matches()
         service = FacialRecognitionService(clearview, supabase)
         result = service.recognize_face(FaceSample(object(), (1, 2, 3, 4)))
 
         self.assertEqual(result.status, "candidates_found")
         self.assertEqual([candidate["identity_id"] for candidate in result.candidates], ["one", "two"])
+        self.assertEqual([candidate["display_name"] for candidate in result.candidates], ["Person One", "Person Two"])
         self.assertEqual(supabase.embedding, unit)
+
+    def test_unusable_face_requests_a_retry(self):
+        class Embeddings:
+            def embed_frame(self, _frame, _rect):
+                raise ClearviewNoFace("unusable")
+
+        service = FacialRecognitionService(Embeddings(), object())
+
+        self.assertEqual(
+            service.recognize_face(FaceSample(object(), (1, 2, 3, 4))).status,
+            "retry_face",
+        )
 
 
 if __name__ == "__main__":

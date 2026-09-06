@@ -30,6 +30,7 @@ class PersonState:
     status: str = None
     name: str = None
     similarity: float = None
+    retry_at: float = 0
 
 
 def recognize_face(service, sample, track_id, generation, results):
@@ -75,10 +76,16 @@ def main():
                 state.running = False
                 if generation != state.generation:
                     continue
+                if result.status in ("retry_face", "no_match"):
+                    state.status = None
+                    state.retry_at = time.monotonic() + (
+                        2.0 if result.status == "no_match" else 0.75
+                    )
+                    continue
                 state.status = result.status
                 if result.candidates:
                     candidate = result.candidates[0]
-                    state.name = candidate.get("display_name") or candidate["identity_id"]
+                    state.name = candidate.get("display_name") or "Unknown person"
                     state.similarity = candidate["similarity"]
                 if result.error:
                     print(f"Recognition error for face {track_id}: {result.error}")
@@ -96,7 +103,11 @@ def main():
                     if state.name:
                         continue
                     if face.ready:
-                        if state.status is None and not state.running:
+                        if (
+                            state.status is None
+                            and not state.running
+                            and time.monotonic() >= state.retry_at
+                        ):
                             state.generation += 1
                             state.running = True
                             state.status = "searching"
@@ -117,7 +128,7 @@ def main():
                         state.status = None
 
                 matches = sum(bool(states[track_id].name) for track_id, _face in tracked_faces)
-                label = f"{len(tracked_faces)} FACES | {matches} CANDIDATE MATCHES"
+                label = f"{len(tracked_faces)} FACES | {matches} In FRAME MATCHES"
                 color = (70, 220, 120) if matches else (0, 180, 255)
                 for track_id, face in tracked_faces:
                     state = states[track_id]
@@ -125,7 +136,7 @@ def main():
                     box_color = (70, 220, 120) if face.ready or state.name else (0, 180, 255)
                     cv2.rectangle(display, (x, y), (x + width, y + height), box_color, 3)
                     if state.name:
-                        face_label = f"CANDIDATE: {state.name} ({state.similarity:.2f})"
+                        face_label = f"{state.name} ({state.similarity:.2f})"
                     elif state.running:
                         face_label = "SEARCHING..."
                     elif state.status:

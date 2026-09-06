@@ -9,6 +9,21 @@ from app.detection.face_detection import DetectedFace, FaceTracker, detect_faces
 from app.providers.face_recognition import FacialRecognitionService
 
 
+class Detector:
+    def __init__(self, faces):
+        self.faces = numpy.array(faces, dtype=numpy.float32) if faces else None
+
+    def setInputSize(self, _size):
+        pass
+
+    def detect(self, _frame):
+        return 0, self.faces
+
+
+def detection(x, y, width, height):
+    return (x, y, width, height, *([0] * 10), 0.9)
+
+
 class CoreTests(unittest.TestCase):
     def test_socket_reader_collects_a_complete_frame(self):
         reader, writer = socket.socketpair()
@@ -21,41 +36,38 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8)), ())
 
     def test_multiple_faces_are_assessed_independently(self):
-        class Detector:
-            def __init__(self, results):
-                self.results = results
-
-            def detectMultiScale(self, *_args, **_kwargs):
-                return self.results
-
-        faces = Detector(((100, 100, 100, 100), (300, 100, 100, 100)))
-        eyes = Detector(((20, 20, 20, 12), (65, 22, 20, 12)))
         frame = numpy.zeros((480, 640, 3), dtype=numpy.uint8)
 
-        with patch("app.detection.face_detection.FACE", faces), patch(
-            "app.detection.face_detection.EYES", eyes
+        with patch(
+            "app.detection.face_detection.DETECTOR",
+            Detector((detection(100, 100, 100, 100), detection(300, 100, 100, 100))),
         ):
             results = detect_faces(frame)
 
         self.assertEqual(len(results), 2)
         self.assertTrue(all(face.ready for face in results))
 
-    def test_unready_face_uses_neutral_status(self):
-        detector = type(
-            "Detector",
-            (),
-            {"detectMultiScale": lambda *_args, **_kwargs: ((100, 100, 40, 40),)},
-        )()
-
-        with patch("app.detection.face_detection.FACE", detector):
+    def test_face_is_ready_without_eye_landmarks(self):
+        with patch(
+            "app.detection.face_detection.DETECTOR",
+            Detector((detection(100, 100, 100, 100),)),
+        ):
             face = detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8))[0]
 
-        self.assertFalse(face.ready)
-        self.assertEqual(face.reason, "FACE DETECTED")
+        self.assertTrue(face.ready)
+
+    def test_face_box_is_clamped_to_frame(self):
+        with patch(
+            "app.detection.face_detection.DETECTOR",
+            Detector((detection(-10, -5, 60, 50),)),
+        ):
+            face = detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8))[0]
+
+        self.assertEqual(face.rect, (0, 0, 67, 60))
 
     def test_face_crop_is_padded_clamped_and_independent(self):
         frame = numpy.zeros((100, 100, 3), dtype=numpy.uint8)
-        crop = DetectedFace((0, 0, 20, 20), True, "FULL FACE READY").crop(
+        crop = DetectedFace((0, 0, 20, 20), True, "SEARCHING...").crop(
             frame, padding=0.5
         )
 
@@ -63,18 +75,16 @@ class CoreTests(unittest.TestCase):
         crop[:] = 1
         self.assertFalse(frame.any())
 
-    def test_face_ids_survive_reordering_and_brief_occlusion(self):
+    def test_face_id_survives_camera_motion_and_occlusion(self):
         tracker = FaceTracker()
-        ready = lambda rect: DetectedFace(rect, True, "FULL FACE READY")
+        ready = lambda rect: DetectedFace(rect, True, "SEARCHING...")
 
-        first = tracker.update((ready((100, 100, 100, 100)), ready((300, 100, 100, 100))))
-        tracker.update(())
-        second = tracker.update((ready((305, 100, 100, 100)), ready((105, 100, 100, 100))))
+        first_id = tracker.update((ready((100, 100, 100, 100)),))[0][0]
+        for _ in range(20):
+            tracker.update(())
+        second_id = tracker.update((ready((180, 130, 100, 100)),))[0][0]
 
-        first_ids = {face.rect[0]: track_id for track_id, face in first}
-        second_ids = {face.rect[0]: track_id for track_id, face in second}
-        self.assertEqual(first_ids[100], second_ids[105])
-        self.assertEqual(first_ids[300], second_ids[305])
+        self.assertEqual(first_id, second_id)
 
     def test_unconfigured_face_recognition_skips_providers(self):
         service = FacialRecognitionService()

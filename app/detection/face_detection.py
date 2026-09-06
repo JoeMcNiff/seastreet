@@ -1,14 +1,13 @@
-"""Fast multi-face detection using OpenCV's bundled classifiers."""
+"""Fast multi-angle face detection and tracking."""
 
 from dataclasses import dataclass
-from itertools import combinations
+from math import hypot
 from pathlib import Path
 
 import cv2
 
-DATA = Path(cv2.data.haarcascades)
-FACE = cv2.CascadeClassifier(str(DATA / "haarcascade_frontalface_default.xml"))
-EYES = cv2.CascadeClassifier(str(DATA / "haarcascade_eye_tree_eyeglasses.xml"))
+MODEL = Path(__file__).parent / "models/face_detection_yunet_2023mar.onnx"
+DETECTOR = cv2.FaceDetectorYN.create(str(MODEL), "", (480, 320), 0.6, 0.3, 500)
 
 
 @dataclass(frozen=True)
@@ -28,10 +27,10 @@ class DetectedFace:
 
 
 class FaceTracker:
-    """Keep lightweight IDs on faces across nearby frames."""
+    """Keep IDs stable through camera movement and brief occlusion."""
 
-    def __init__(self, min_overlap=0.15, max_missed=15):
-        self.min_overlap = min_overlap
+    def __init__(self, min_similarity=0.35, max_missed=45):
+        self.min_similarity = min_similarity
         self.max_missed = max_missed
         self._next_id = 1
         self._tracks = {}
@@ -47,33 +46,42 @@ class FaceTracker:
         existing = set(self._tracks)
         candidates = sorted(
             (
-                (_overlap(rect, face.rect), track_id, index)
-                for track_id, (rect, _missed) in self._tracks.items()
+                (
+                    max(
+                        _similarity(rect, face.rect),
+                        _similarity(_move(rect, velocity, missed + 1), face.rect),
+                    ),
+                    track_id,
+                    index,
+                )
+                for track_id, (rect, missed, velocity) in self._tracks.items()
                 for index, face in enumerate(faces)
             ),
             reverse=True,
         )
         assignments = {}
         matched = set()
-        for overlap, track_id, index in candidates:
-            if overlap < self.min_overlap:
+        for similarity, track_id, index in candidates:
+            if similarity < self.min_similarity:
                 break
             if track_id not in matched and index not in assignments:
                 assignments[index] = track_id
                 matched.add(track_id)
-                self._tracks[track_id] = (faces[index].rect, 0)
+                old_rect, _missed, old_velocity = self._tracks[track_id]
+                velocity = _velocity(old_rect, faces[index].rect, old_velocity)
+                self._tracks[track_id] = (faces[index].rect, 0, velocity)
 
         for track_id in existing - matched:
-            rect, missed = self._tracks[track_id]
+            rect, missed, velocity = self._tracks[track_id]
             if missed >= self.max_missed:
                 del self._tracks[track_id]
             else:
-                self._tracks[track_id] = (rect, missed + 1)
+                self._tracks[track_id] = (rect, missed + 1, velocity)
 
         for index, face in enumerate(faces):
             if index not in assignments:
                 assignments[index] = self._next_id
-                self._tracks[self._next_id] = (face.rect, 0)
+                self._tracks[self._next_id] = (face.rect, 0, (0, 0))
                 self._next_id += 1
 
         return tuple((assignments[index], face) for index, face in enumerate(faces))
@@ -88,46 +96,49 @@ def _overlap(first, second):
     return intersection / (aw * ah + bw * bh - intersection)
 
 
+def _similarity(first, second):
+    ax, ay, aw, ah = first
+    bx, by, bw, bh = second
+    distance = hypot(ax + aw / 2 - bx - bw / 2, ay + ah / 2 - by - bh / 2)
+    proximity = max(0, 1 - distance / (2 * max(aw, ah, bw, bh)))
+    size = min(aw * ah, bw * bh) / max(aw * ah, bw * bh)
+    return max(_overlap(first, second), 0.7 * proximity + 0.3 * size)
+
+
+def _move(rect, velocity, frames):
+    x, y, width, height = rect
+    return x + velocity[0] * frames, y + velocity[1] * frames, width, height
+
+
+def _velocity(old_rect, new_rect, old_velocity):
+    old_x, old_y, old_width, old_height = old_rect
+    new_x, new_y, new_width, new_height = new_rect
+    dx = new_x + new_width / 2 - old_x - old_width / 2
+    dy = new_y + new_height / 2 - old_y - old_height / 2
+    return (old_velocity[0] + dx) / 2, (old_velocity[1] + dy) / 2
+
+
 def detect_faces(frame):
-    """Detect and independently assess every frontal face in a frame."""
-    scale = min(1.0, 640 / frame.shape[1])
+    """Detect faces without requiring frontal eye landmarks."""
+    scale = min(1.0, 480 / frame.shape[1])
     image = cv2.resize(frame, None, fx=scale, fy=scale) if scale < 1 else frame
-    gray = cv2.equalizeHist(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
-    height, width = gray.shape
-    minimum = max(36, min(width, height) // 14)
-    faces = FACE.detectMultiScale(gray, 1.1, 3, minSize=(minimum, minimum))
+    height, width = image.shape[:2]
+    DETECTOR.setInputSize((width, height))
+    _count, faces = DETECTOR.detect(image)
+    if faces is None:
+        return ()
 
     results = []
-    for x, y, face_width, face_height in faces:
-        rect = tuple(round(value / scale) for value in (x, y, face_width, face_height))
-        margin = min(width, height) * 0.005
-        if (
-            x < margin
-            or y < margin
-            or x + face_width > width - margin
-            or y + face_height > height - margin
-        ):
-            results.append(DetectedFace(rect, False, "FACE DETECTED"))
+    frame_height, frame_width = frame.shape[:2]
+    for x, y, face_width, face_height in faces[:, :4]:
+        left = max(0, round(x / scale))
+        top = max(0, round(y / scale))
+        right = min(frame_width, round((x + face_width) / scale))
+        bottom = min(frame_height, round((y + face_height) / scale))
+        if right <= left or bottom <= top:
             continue
-        if face_height < height * 0.11:
-            results.append(DetectedFace(rect, False, "FACE DETECTED"))
-            continue
-
-        upper_face = gray[y : y + round(face_height * 0.75), x : x + face_width]
-        eyes = EYES.detectMultiScale(
-            upper_face,
-            1.1,
-            3,
-            minSize=(max(8, face_width // 14), max(6, face_height // 16)),
+        results.append(
+            DetectedFace((left, top, right - left, bottom - top), True, "SEARCHING...")
         )
-        centers = sorted((ex + ew / 2, ey + eh / 2) for ex, ey, ew, eh in eyes)
-        ready = any(
-            face_width * 0.15 < right[0] - left[0] < face_width * 0.82
-            and abs(right[1] - left[1]) < face_height * 0.28
-            and abs((right[0] + left[0]) / 2 - face_width / 2) < face_width * 0.30
-            for left, right in combinations(centers, 2)
-        )
-        reason = "FULL FACE READY" if ready else "FACE DETECTED"
-        results.append(DetectedFace(rect, ready, reason))
 
     return tuple(results)

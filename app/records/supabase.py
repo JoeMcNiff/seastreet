@@ -40,6 +40,13 @@ class SupabaseClient:
         )
         return rows[0] if rows else None
 
+    def identity_name(self, identity_id):
+        rows = self._request(
+            "/rest/v1/identities"
+            f"?id=eq.{quote(str(identity_id), safe='')}&select=display_name&limit=1"
+        )
+        return rows[0]["display_name"] if rows else None
+
     def upsert_image(self, storage_path, content_type, bucket="identity-images", **metadata):
         values = {
             "storage_bucket": bucket,

@@ -28,10 +28,10 @@ Allow camera access when macOS asks. The Mac and iPhone must use the same Apple
 Account, with Wi-Fi, Bluetooth, and Continuity Camera enabled. Keep the iPhone
 nearby and locked. Press `Q` or Escape to close the detection window.
 
-Each detected face gets its own box; green means the face is usable and orange
-shows that it needs adjustment. Every ready face is searched independently, and
-multiple people are searched concurrently. Candidate names and scores
+Each detected face gets its own box and is searched independently; multiple
+people can be searched concurrently. Candidate names and scores
 remain attached to their tracked faces through brief movement or occlusion.
+Detection uses OpenCV YuNet and does not require visible eye landmarks.
 Without API credentials the service
 returns `pending_provider` and makes no network request.
 

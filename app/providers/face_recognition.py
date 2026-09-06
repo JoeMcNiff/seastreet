@@ -3,7 +3,7 @@
 import os
 from dataclasses import dataclass
 
-from app.providers.clearview import ClearviewClient, ClearviewError
+from app.providers.clearview import ClearviewClient, ClearviewError, ClearviewNoFace
 from app.records.supabase import SupabaseClient, SupabaseError
 
 
@@ -53,8 +53,19 @@ class FacialRecognitionService:
             embedding = self.clearview.embed_frame(sample.frame, sample.rect)
             matches = self.supabase.match_embedding(embedding, self.threshold, self.limit)
             candidates = self.best_identity_matches(matches)
+            candidates = tuple(
+                candidate
+                if candidate.get("display_name")
+                else {
+                    **candidate,
+                    "display_name": self.supabase.identity_name(candidate["identity_id"]),
+                }
+                for candidate in candidates
+            )
             status = "candidates_found" if candidates else "no_match"
             return RecognitionResult(status, candidates)
+        except ClearviewNoFace:
+            return RecognitionResult("retry_face")
         except (ClearviewError, SupabaseError, ValueError) as error:
             return RecognitionResult("provider_error", error=str(error))
 
