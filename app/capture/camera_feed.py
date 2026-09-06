@@ -65,13 +65,13 @@ class WebRTCCamera:
         if self._thread:
             self._thread.join(timeout=5)
 
-    def notify_match(self):
+    def notify_alert(self):
         if self._loop:
-            self._loop.call_soon_threadsafe(self._send_match_alert)
+            self._loop.call_soon_threadsafe(self._send_alert)
 
-    def _send_match_alert(self):
+    def _send_alert(self):
         if self._alerts and self._alerts.readyState == "open":
-            self._alerts.send("match")
+            self._alerts.send("alert")
 
     def _run(self):
         try:

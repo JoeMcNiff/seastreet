@@ -26,7 +26,7 @@
   let reconnectTimer;
   let audioContext;
 
-  function playMatchSound() {
+  function playAlertSound() {
     const now = audioContext.currentTime;
     [0, 0.13].forEach((delay, index) => {
       const tone = audioContext.createOscillator();
@@ -40,7 +40,7 @@
       tone.start(start);
       tone.stop(start + 0.13);
     });
-    status.textContent = "Candidate match";
+    status.textContent = "Alert detected";
   }
 
   function retry(error) {
@@ -79,7 +79,7 @@
     }
     const alerts = candidate.createDataChannel("alerts");
     alerts.addEventListener("message", event => {
-      if (event.data === "match") playMatchSound();
+      if (event.data === "alert") playAlertSound();
     });
     candidate.addEventListener("connectionstatechange", () => {
       if (candidate !== peer) return;
@@ -114,7 +114,11 @@
           frameRate: {ideal: 30, max: 30}
         }
       });
-      stream.getVideoTracks()[0].contentHint = "detail";
+      const cameraTrack = stream.getVideoTracks()[0];
+      cameraTrack.contentHint = "detail";
+      if (cameraTrack.getCapabilities?.().focusMode?.includes("continuous")) {
+        await cameraTrack.applyConstraints({advanced: [{focusMode: "continuous"}]}).catch(() => {});
+      }
       preview.srcObject = stream;
       navigator.wakeLock?.request("screen").catch(() => {});
       await connect();

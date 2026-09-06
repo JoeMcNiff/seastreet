@@ -25,7 +25,8 @@ The terminal prints the iPhone camera URL. Keep the Mac and iPhone on the same
 Wi-Fi network, open that URL in Safari, and tap **Start Camera**. Keep Safari
 open and the iPhone unlocked while streaming. Press `Q` or Escape to close the
 laptop window. Allow incoming network connections if macOS asks. The iPhone
-plays a short two-tone alert whenever a new candidate match is found.
+plays a short two-tone alert only when a matched person has a synthetic
+criminal record or a scanned license is missing, mismatched, or expired.
 
 ### First-time iPhone certificate setup
 
@@ -47,9 +48,8 @@ people can be searched concurrently. Candidate names and scores
 remain attached to their tracked faces through brief movement or occlusion.
 Detection uses OpenCV YuNet at up to 960 pixels on the frame's long side,
 smooths tracked boxes, and does not require visible eye landmarks. Before each
-recognition request, the live workflow keeps up to five small face crops for
-about 0.16 seconds and sends only the sharpest one; this is still one Clearview
-request rather than a burst.
+recognition request, the live workflow sends one padded face crop. Detection
+runs on a latest-frame worker, so it cannot stall the video or build a backlog.
 Without API credentials the service
 returns `pending_provider` and makes no network request.
 
@@ -60,11 +60,21 @@ matched people. Events are appended to `data/audit/events.jsonl`; optional
 operator, unit, encounter, predicate, and log-path values can be set using the
 variables in `.env.example`.
 
+The same feed scans PDF417 barcodes on the back of US driver licenses and IDs.
+Barcode decoding runs locally five times per second on a separate worker. It
+tries the original image first, then retries with contrast enhancement and
+upscaling for small, dim, or unevenly lit barcodes. A
+decoded AAMVA license number is looked up in `public.licenses`, and the scanned
+name, dates, sex, and state are cross-referenced with the database record. The
+license panel stays visible for eight seconds; face detection and recognition
+continue independently throughout the scan and lookup.
+
 ## Clearview and Supabase
 
 Apply the SQL files in `supabase/migrations/` in numeric order to the existing
 Supabase schema, then fill in `.env`. Migration `002` adds the criminal-record
-fields used by the side panel. Python loads `.env` automatically:
+fields used by the side panel, while migration `003` indexes license-number
+lookups. Python loads `.env` automatically:
 
 ```bash
 python -m scripts.check_connections

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy
+import zxingcpp
 
 from app.capture.camera_feed import WebRTCCamera, local_hostname
 from app.detection.face_detection import (
@@ -12,7 +13,15 @@ from app.detection.face_detection import (
     FaceTracker,
     detect_faces,
 )
+from app.detection.license_detection import (
+    LicenseData,
+    LicenseResult,
+    LicenseScanner,
+    parse_aamva,
+    scan_license,
+)
 from app.providers.face_recognition import FacialRecognitionService
+from app.ui.demo import ALERT_STATUSES
 from app.ui.live_panel import render_live_window
 
 
@@ -32,11 +41,17 @@ def detection(x, y, width, height):
 
 
 class CoreTests(unittest.TestCase):
+    LICENSE_PAYLOAD = (
+        "@\n\x1e\rANSI 636026080102DL00410288ZA03290015DLDAQD1234567\n"
+        "DCSDOE\nDACJANE\nDBB01021990\nDBA01022030\n"
+        "DBD01022025\nDBC2\nDAJMA\n"
+    )
+
     @patch("app.capture.camera_feed.socket.gethostname", return_value="Demo-Mac.local")
     def test_camera_url_uses_local_hostname(self, _hostname):
         self.assertEqual(local_hostname(), "Demo-Mac.local")
 
-    def test_match_alert_is_sent_to_the_phone(self):
+    def test_actionable_alert_is_sent_to_the_phone(self):
         class Loop:
             def call_soon_threadsafe(self, callback):
                 callback()
@@ -51,9 +66,17 @@ class CoreTests(unittest.TestCase):
         camera = WebRTCCamera()
         camera._loop = Loop()
         camera._alerts = Alerts()
-        camera.notify_match()
+        camera.notify_alert()
 
-        self.assertEqual(camera._alerts.messages, ["match"])
+        self.assertEqual(camera._alerts.messages, ["alert"])
+
+    def test_only_records_and_bad_licenses_trigger_alerts(self):
+        self.assertIn("records_found", ALERT_STATUSES)
+        self.assertIn("license_not_found", ALERT_STATUSES)
+        self.assertIn("license_mismatch", ALERT_STATUSES)
+        self.assertIn("license_expired", ALERT_STATUSES)
+        self.assertNotIn("no_records", ALERT_STATUSES)
+        self.assertNotIn("license_found", ALERT_STATUSES)
 
     def test_blank_image_has_no_face(self):
         self.assertEqual(detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8)), ())
@@ -126,6 +149,63 @@ class CoreTests(unittest.TestCase):
 
         self.assertEqual(result[1][0][1].rect, (100, 100, 100, 100))
 
+    def test_aamva_driver_license_is_parsed(self):
+        license_data = parse_aamva(self.LICENSE_PAYLOAD)
+
+        self.assertEqual(license_data.number, "D1234567")
+        self.assertEqual(license_data.first_name, "JANE")
+        self.assertEqual(license_data.date_of_birth, "1990-01-02")
+        self.assertEqual(license_data.sex, "F")
+
+    def test_pdf417_driver_license_is_decoded(self):
+        barcode = zxingcpp.create_barcode(
+            self.LICENSE_PAYLOAD, zxingcpp.BarcodeFormat.PDF417
+        )
+        image = numpy.asarray(barcode.to_image(scale=3))
+
+        license_data = scan_license(image)
+
+        self.assertEqual(license_data.number, "D1234567")
+        self.assertGreater(license_data.rect[2], 0)
+
+    @patch("app.detection.license_detection._decode")
+    def test_license_scan_retries_with_an_enhanced_image(self, decode):
+        expected = LicenseData("D1234567")
+        decode.side_effect = (None, expected)
+
+        result = scan_license(numpy.zeros((100, 200, 3), dtype=numpy.uint8))
+
+        self.assertIs(result, expected)
+        self.assertEqual(decode.call_count, 2)
+        self.assertEqual(decode.call_args_list[1].kwargs, {"scale": 1.5})
+
+    def test_license_lookup_runs_off_the_calling_thread(self):
+        scan = LicenseData("D1234567", first_name="JANE", state="MA", rect=(1, 2, 3, 4))
+
+        class DMV:
+            def licenses_by_number(self, _number):
+                time.sleep(0.05)
+                return ({"number": "D1234567", "first_name": "JANE", "state": "MA"},)
+
+        scanner = LicenseScanner(DMV(), interval=0, scanner=lambda _frame: scan)
+        try:
+            started = time.monotonic()
+            scanner.submit(object())
+            self.assertLess(time.monotonic() - started, 0.01)
+            deadline = time.monotonic() + 1
+            results = []
+            while time.monotonic() < deadline and not any(
+                result.status == "license_found" for result in results
+            ):
+                result = scanner.poll()
+                if result:
+                    results.append(result)
+                time.sleep(0.001)
+        finally:
+            scanner.close()
+
+        self.assertEqual([result.status for result in results], ["searching", "license_found"])
+
     def test_face_id_survives_camera_motion_and_occlusion(self):
         tracker = FaceTracker()
         ready = lambda rect: DetectedFace(rect, True, "SEARCHING...")
@@ -172,6 +252,16 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(result.shape, (600, 1400, 3))
         self.assertFalse(frame.any())
         self.assertTrue(result[:, 1050:].any())
+
+        license_result = LicenseResult(
+            "license_found",
+            LicenseData("D1234567", first_name="JANE", last_name="DOE", state="MA"),
+            {"number": "D1234567", "first_name": "JANE", "last_name": "DOE"},
+        )
+        result = render_live_window(
+            frame, {1: state}, 1, (), (1400, 600), license_result
+        )
+        self.assertEqual(result.shape, (600, 1400, 3))
 
 
 if __name__ == "__main__":

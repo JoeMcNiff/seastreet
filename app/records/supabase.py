@@ -97,6 +97,14 @@ class SupabaseClient:
             )
         )
 
+    def licenses_by_number(self, number):
+        number = quote(str(number).strip(), safe="")
+        return tuple(
+            self._request(
+                f"/rest/v1/licenses?number=eq.{number}&select=*&limit=10"
+            )
+        )
+
     def image_by_storage_path(self, storage_path, bucket="identity-images"):
         rows = self._request(
             "/rest/v1/identity_images"
@@ -169,6 +177,7 @@ class SupabaseClient:
     def health(self):
         self._request("/rest/v1/identities?select=id&limit=1")
         self._request("/rest/v1/criminal_records?select=id&limit=1")
+        self._request("/rest/v1/licenses?select=id&limit=1")
         return True
 
     def _request(self, path, method="GET", payload=None, headers=None, raw=False):

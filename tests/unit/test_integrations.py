@@ -6,6 +6,7 @@ import numpy
 
 from app.providers.clearview import ClearviewClient, ClearviewError, ClearviewNoFace
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
+from app.detection.license_detection import LicenseData, lookup_license
 from app.records.criminal_records import CriminalRecordsService
 from app.records.supabase import SupabaseClient
 
@@ -152,6 +153,57 @@ class IntegrationsTests(unittest.TestCase):
         self.assertEqual(result.status, "no_records")
         self.assertEqual(result.records, ())
 
+    def test_license_is_cross_referenced_with_supabase(self):
+        requests = []
+        client = SupabaseClient(
+            "https://example.supabase.co",
+            "key",
+            opener=lambda request, timeout: requests.append(request)
+            or Response(
+                [
+                    {
+                        "id": 7,
+                        "number": "D1234567",
+                        "first_name": "JANE",
+                        "last_name": "DOE",
+                        "state": "MA",
+                    }
+                ]
+            ),
+        )
+
+        result = lookup_license(
+            client,
+            LicenseData(
+                "D1234567", first_name="JANE", last_name="DOE", state="MA"
+            ),
+        )
+
+        self.assertEqual(result.status, "license_found")
+        self.assertEqual(result.record["id"], 7)
+        self.assertIn("licenses?number=eq.D1234567", requests[0].full_url)
+
+    def test_license_field_mismatch_is_reported(self):
+        class DMV:
+            def licenses_by_number(self, _number):
+                return ({"number": "D1234567", "last_name": "SMITH"},)
+
+        result = lookup_license(DMV(), LicenseData("D1234567", last_name="DOE"))
+
+        self.assertEqual(result.status, "license_mismatch")
+        self.assertEqual(result.mismatches, ("last_name",))
+
+    def test_expired_license_is_reported(self):
+        class DMV:
+            def licenses_by_number(self, _number):
+                return ({"number": "D1234567", "expiration_date": "2000-01-01"},)
+
+        result = lookup_license(
+            DMV(), LicenseData("D1234567", expiration_date="2000-01-01")
+        )
+
+        self.assertEqual(result.status, "license_expired")
+
     def test_supabase_lists_bucket_recursively(self):
         responses = iter(
             (
@@ -167,7 +219,7 @@ class IntegrationsTests(unittest.TestCase):
 
         self.assertEqual(files[0]["path"], "person-one/face.jpg")
 
-    def test_supabase_health_checks_identity_and_record_access(self):
+    def test_supabase_health_checks_required_tables(self):
         requests = []
         client = SupabaseClient(
             "https://example.supabase.co",
@@ -180,6 +232,7 @@ class IntegrationsTests(unittest.TestCase):
         self.assertTrue(
             requests[1].full_url.endswith("criminal_records?select=id&limit=1")
         )
+        self.assertTrue(requests[2].full_url.endswith("licenses?select=id&limit=1"))
 
     def test_face_embedding_is_matched_and_grouped_by_identity(self):
         unit = tuple([1.0] + [0.0] * 511)
