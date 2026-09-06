@@ -1,11 +1,19 @@
 import unittest
+import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy
 
 from app.capture.camera_feed import WebRTCCamera, local_hostname
-from app.detection.face_detection import DetectedFace, FaceTracker, detect_faces
+from app.detection.face_detection import (
+    DetectedFace,
+    FaceDetectionWorker,
+    FaceTracker,
+    detect_faces,
+)
 from app.providers.face_recognition import FacialRecognitionService
+from app.ui.live_panel import render_live_window
 
 
 class Detector:
@@ -76,9 +84,9 @@ class CoreTests(unittest.TestCase):
             "app.detection.face_detection.DETECTOR",
             Detector((detection(-10, -5, 60, 50),)),
         ):
-            face = detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8))[0]
+            face = detect_faces(numpy.zeros((1080, 1920, 3), dtype=numpy.uint8))[0]
 
-        self.assertEqual(face.rect, (0, 0, 67, 60))
+        self.assertEqual(face.rect, (0, 0, 100, 90))
 
     def test_face_crop_is_padded_clamped_and_independent(self):
         frame = numpy.zeros((100, 100, 3), dtype=numpy.uint8)
@@ -89,6 +97,34 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(crop.shape, (30, 30, 3))
         crop[:] = 1
         self.assertFalse(frame.any())
+
+    def test_face_sample_has_a_crop_relative_rectangle(self):
+        frame = numpy.zeros((100, 100, 3), dtype=numpy.uint8)
+
+        crop, rect = DetectedFace((10, 20, 20, 30), True, "SEARCHING...").sample(
+            frame, padding=0.5
+        )
+
+        self.assertEqual(crop.shape, (60, 40, 3))
+        self.assertEqual(rect, (10, 15, 20, 30))
+
+    def test_face_detection_worker_returns_results(self):
+        with patch(
+            "app.detection.face_detection.DETECTOR",
+            Detector((detection(100, 100, 100, 100),)),
+        ):
+            worker = FaceDetectionWorker()
+            try:
+                worker.submit(numpy.zeros((480, 640, 3), dtype=numpy.uint8))
+                deadline = time.monotonic() + 1
+                result = None
+                while result is None and time.monotonic() < deadline:
+                    result = worker.poll()
+                    time.sleep(0.001)
+            finally:
+                worker.close()
+
+        self.assertEqual(result[1][0][1].rect, (100, 100, 100, 100))
 
     def test_face_id_survives_camera_motion_and_occlusion(self):
         tracker = FaceTracker()
@@ -101,9 +137,41 @@ class CoreTests(unittest.TestCase):
 
         self.assertEqual(first_id, second_id)
 
+    def test_tracked_face_box_is_smoothed(self):
+        tracker = FaceTracker()
+        ready = lambda rect: DetectedFace(rect, True, "SEARCHING...")
+        tracker.update((ready((100, 100, 100, 100)),))
+
+        _track_id, face = tracker.update((ready((120, 110, 100, 100)),))[0]
+
+        self.assertEqual(face.rect, (113, 106, 100, 100))
+
     def test_unconfigured_face_recognition_skips_providers(self):
         service = FacialRecognitionService()
         self.assertEqual(service.recognize_face(object()).status, "pending_provider")
+
+    def test_live_panel_is_added_without_changing_the_camera_frame(self):
+        frame = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
+        state = SimpleNamespace(
+            name="Synthetic Person",
+            similarity=0.82,
+            status="candidates_found",
+            records_status="records_found",
+            records=(
+                {
+                    "record_status": "active",
+                    "wanted_level": 2,
+                    "active_warrant": True,
+                    "primary_offense": "Synthetic offense",
+                },
+            ),
+        )
+
+        result = render_live_window(frame, {1: state}, 1, (), (1400, 600))
+
+        self.assertEqual(result.shape, (600, 1400, 3))
+        self.assertFalse(frame.any())
+        self.assertTrue(result[:, 1050:].any())
 
 
 if __name__ == "__main__":

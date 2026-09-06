@@ -13,11 +13,11 @@ the UI.
 | --- | --- | --- |
 | `app/capture` | Receive the iPhone's WebRTC stream and maintain only the latest decoded frame | Identity decisions |
 | `app/detection` | Detect visible faces and maintain anonymous subject tracks | Facial recognition or records access |
-| `app/workflow` | Validate the predicate, capture a face, gate review, and coordinate state transitions | Provider-specific HTTP or database code |
-| `app/providers` | Call Clearview `/embed`, validate the vector, and search for identity candidates | Local matching or human confirmation |
+| `app/workflow` | Coordinate capture, matching, records lookup, and state transitions | Provider-specific HTTP or database code |
+| `app/providers` | Call Clearview `/embed`, validate the vector, and search for identity candidates | Criminal-record storage |
 | `app/records` | Search the Supabase vector image database locally, resolve the linked identity, and query synthetic records | Embedding generation |
 | `app/audit` | Persist append-only events with timestamps, actor, reason, subject, results, decisions, and disposition | UI presentation |
-| `app/ui` | Show live feed, subject selection, review, records, and logs | Search or records policy |
+| `app/ui` | Show the live feed, matched identities, synthetic records, and event timeline | Provider implementation |
 
 ## Suggested module contracts
 
@@ -26,14 +26,15 @@ FrameSource.next() -> Frame
 SubjectTracker.observe(Frame) -> list[AnonymousSubject]
 EmbeddingProvider.embed(images, request) -> Embedding
 VectorStore.match(embedding, threshold) -> list[Candidate]
-RecordsProvider.lookup(confirmed_identity) -> RecordsResult
+RecordsProvider.lookup(matched_identity) -> RecordsResult
 EventLog.append(event) -> event_id
 ```
 
 The intended Clearview path is:
 
 ```text
-padded face crop + crop-relative OpenCV face rectangle
+short local sample window
+   -> sharpest padded face crop + crop-relative OpenCV face rectangle
    -> ClearviewEmbeddingProvider (one authenticated `/embed` request)
    -> L2-normalized query embedding
    -> SupabaseVectorStore (pgvector similarity search)
@@ -42,7 +43,7 @@ padded face crop + crop-relative OpenCV face rectangle
 
 Clearview provides the embedding service; it is not the source of the demo
 identity record. The application owns the similarity threshold, candidate
-ranking, human review gate, and identity-to-record join. Keep the API key in an
+ranking, and identity-to-record join. Keep the API key in an
 environment variable or local secret store, never in source code or audit
 events.
 
@@ -54,14 +55,13 @@ IDLE
   -> PREDICATE_RECORDED
   -> FACE_CAPTURED
   -> CANDIDATE_RETURNED
-  -> HUMAN_CONFIRMED | HUMAN_REJECTED
-  -> RECORDS_RETURNED
+  -> RECORDS_RETURNED | RECORDS_EMPTY | RECORDS_UNAVAILABLE
   -> CLOSED
 ```
 
-Rejected, cancelled, timed-out, and provider-error paths must also close with
-an audit event. No state may call `RecordsProvider` before
-`HUMAN_CONFIRMED`.
+No-match, cancelled, timed-out, and provider-error paths must also produce an
+audit event. In the current demo design, a candidate match automatically starts
+the synthetic records query.
 
 ## Evidence event minimum
 
@@ -72,7 +72,6 @@ Each search event should include:
 - documented search reason and predicate status
 - selected image metadata and provider request ID
 - normalized candidate, provider status, and provider error if any
-- reviewer ID, review decision, and review timestamp
 - records query ID, returned record categories, and final disposition
 
 Store image bytes and sensitive payloads separately from the searchable event
@@ -92,9 +91,9 @@ must never silently fall back to real-person data.
 
 1. Keep the WebRTC receiver and detector behind `FrameSource` and
    `SubjectTracker` contracts.
-2. Add subject selection, reason form, and face capture.
-3. Implement mock provider, human review, synthetic records, and audit events
-   as one end-to-end vertical slice.
+2. Add the reason/predicate configuration and face capture.
+3. Implement synthetic records and audit events as one end-to-end vertical
+   slice.
 4. Build the demo UI around the same session state and live event stream.
 5. Add Clearview embedding retrieval and Supabase vector matching behind the
    interfaces above; keep the fixture adapters as the offline demo path.
@@ -103,7 +102,7 @@ must never silently fall back to real-person data.
 
 1. What Clearview model/version and rate limit apply, and are OpenCV-generated
    rectangles accepted directly by `/embed` without a preceding `/detect` call?
-2. What exact search predicate and reviewer role should the demo require?
+2. What exact search predicate should the demo require?
 3. Should the phone camera page expose controls beyond starting and monitoring
    its encrypted WebRTC stream?
 4. What Supabase project/table/schema and pgvector distance metric should the
@@ -111,6 +110,4 @@ must never silently fall back to real-person data.
 5. Should audit events be written to JSONL, SQLite, or Supabase during the
    hackathon? Who can view or export them?
 6. What is the required retention behavior for captured frames and provider
-   responses after a rejected or cancelled search?
-7. Does the demo need multiple subjects in view, or can it enforce one
-   selected face at a time as the current detector does?
+   responses after a cancelled search?

@@ -91,7 +91,7 @@ class ClearviewClient:
         face_left, face_top = max(0, math.floor(x)), max(0, math.floor(y))
         face_right = min(frame_width, math.ceil(x + width))
         face_bottom = min(frame_height, math.ceil(y + height))
-        x_pad, y_pad = width * 0.3, height * 0.3
+        x_pad, y_pad = width * 0.35, height * 0.35
         left, top = max(0, math.floor(x - x_pad)), max(0, math.floor(y - y_pad))
         right = min(frame_width, math.ceil(x + width + x_pad))
         bottom = min(frame_height, math.ceil(y + height + y_pad))

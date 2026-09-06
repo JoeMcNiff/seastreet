@@ -22,6 +22,7 @@
   const status = document.querySelector("#status");
   let stream;
   let peer;
+  let connectPromise;
   let reconnectTimer;
   let audioContext;
 
@@ -55,7 +56,14 @@
     }));
   }
 
-  async function connect() {
+  function connect() {
+    if (!connectPromise) {
+      connectPromise = connectOnce().finally(() => connectPromise = null);
+    }
+    return connectPromise;
+  }
+
+  async function connectOnce() {
     clearTimeout(reconnectTimer);
     const previous = peer;
     peer = null;

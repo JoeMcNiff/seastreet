@@ -1,5 +1,7 @@
 """Fast multi-angle face detection and tracking."""
 
+import threading
+from collections import deque
 from dataclasses import dataclass
 from math import hypot
 from pathlib import Path
@@ -7,7 +9,10 @@ from pathlib import Path
 import cv2
 
 MODEL = Path(__file__).parent / "models/face_detection_yunet_2023mar.onnx"
-DETECTOR = cv2.FaceDetectorYN.create(str(MODEL), "", (480, 320), 0.6, 0.3, 500)
+DETECTION_SIZE = 960
+DETECTOR = cv2.FaceDetectorYN.create(
+    str(MODEL), "", (DETECTION_SIZE, 540), 0.45, 0.3, 500
+)
 
 
 @dataclass(frozen=True)
@@ -16,20 +21,24 @@ class DetectedFace:
     ready: bool
     reason: str
 
-    def crop(self, frame, padding=0.15):
+    def crop(self, frame, padding=0.35):
         """Return an independent, padded copy of this face."""
+        return self.sample(frame, padding)[0]
+
+    def sample(self, frame, padding=0.35):
+        """Return a padded face image and its crop-relative rectangle."""
         x, y, width, height = self.rect
         x_pad, y_pad = round(width * padding), round(height * padding)
         left, top = max(0, x - x_pad), max(0, y - y_pad)
         right = min(frame.shape[1], x + width + x_pad)
         bottom = min(frame.shape[0], y + height + y_pad)
-        return frame[top:bottom, left:right].copy()
+        return frame[top:bottom, left:right].copy(), (x - left, y - top, width, height)
 
 
 class FaceTracker:
     """Keep IDs stable through camera movement and brief occlusion."""
 
-    def __init__(self, min_similarity=0.35, max_missed=45):
+    def __init__(self, min_similarity=0.30, max_missed=60):
         self.min_similarity = min_similarity
         self.max_missed = max_missed
         self._next_id = 1
@@ -68,8 +77,9 @@ class FaceTracker:
                 assignments[index] = track_id
                 matched.add(track_id)
                 old_rect, _missed, old_velocity = self._tracks[track_id]
-                velocity = _velocity(old_rect, faces[index].rect, old_velocity)
-                self._tracks[track_id] = (faces[index].rect, 0, velocity)
+                rect = _smooth(old_rect, faces[index].rect)
+                velocity = _velocity(old_rect, rect, old_velocity)
+                self._tracks[track_id] = (rect, 0, velocity)
 
         for track_id in existing - matched:
             rect, missed, velocity = self._tracks[track_id]
@@ -84,7 +94,17 @@ class FaceTracker:
                 self._tracks[self._next_id] = (face.rect, 0, (0, 0))
                 self._next_id += 1
 
-        return tuple((assignments[index], face) for index, face in enumerate(faces))
+        return tuple(
+            (
+                assignments[index],
+                DetectedFace(
+                    tuple(round(value) for value in self._tracks[assignments[index]][0]),
+                    face.ready,
+                    face.reason,
+                ),
+            )
+            for index, face in enumerate(faces)
+        )
 
 
 def _overlap(first, second):
@@ -118,9 +138,16 @@ def _velocity(old_rect, new_rect, old_velocity):
     return (old_velocity[0] + dx) / 2, (old_velocity[1] + dy) / 2
 
 
+def _smooth(old_rect, new_rect, new_weight=0.65):
+    return tuple(
+        old * (1 - new_weight) + new * new_weight
+        for old, new in zip(old_rect, new_rect)
+    )
+
+
 def detect_faces(frame):
     """Detect faces without requiring frontal eye landmarks."""
-    scale = min(1.0, 480 / frame.shape[1])
+    scale = min(1.0, DETECTION_SIZE / max(frame.shape[:2]))
     image = cv2.resize(frame, None, fx=scale, fy=scale) if scale < 1 else frame
     height, width = image.shape[:2]
     DETECTOR.setInputSize((width, height))
@@ -142,3 +169,60 @@ def detect_faces(frame):
         )
 
     return tuple(results)
+
+
+class FaceDetectionWorker:
+    """Run detection on the newest frame without blocking the display."""
+
+    def __init__(self):
+        self._frames = deque(maxlen=1)
+        self._results = deque(maxlen=1)
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._epoch = 0
+        self._tracker = FaceTracker()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def submit(self, frame):
+        with self._lock:
+            self._frames.append((self._epoch, frame))
+        self._wake.set()
+
+    def poll(self):
+        with self._lock:
+            try:
+                return self._results.pop()
+            except IndexError:
+                return None
+
+    def reset(self):
+        with self._lock:
+            self._epoch += 1
+            self._frames.clear()
+            self._results.clear()
+            self._tracker.clear()
+
+    def close(self):
+        self._stop.set()
+        self._wake.set()
+        self._thread.join(timeout=2)
+
+    def _run(self):
+        while not self._stop.is_set():
+            self._wake.wait()
+            self._wake.clear()
+            if self._stop.is_set():
+                break
+            with self._lock:
+                try:
+                    epoch, frame = self._frames.pop()
+                except IndexError:
+                    continue
+            faces = detect_faces(frame)
+            with self._lock:
+                if epoch != self._epoch:
+                    continue
+                tracked = self._tracker.update(faces)
+                self._results.append((frame, tracked, tuple(self._tracker.active_ids)))

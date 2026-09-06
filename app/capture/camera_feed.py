@@ -9,7 +9,12 @@ from collections import deque
 from pathlib import Path
 
 from aiohttp import web
-from aiortc import MediaStreamError, RTCPeerConnection, RTCSessionDescription
+from aiortc import (
+    MediaStreamError,
+    RTCConfiguration,
+    RTCPeerConnection,
+    RTCSessionDescription,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,6 +38,7 @@ class WebRTCCamera:
         self._ready = threading.Event()
         self._loop = None
         self._stop = None
+        self._offer_lock = None
         self._thread = None
         self._error = None
 
@@ -85,14 +91,19 @@ class WebRTCCamera:
         runner = web.AppRunner(app)
         await runner.setup()
         try:
-            await web.TCPSite(runner, self.host, self.https_port, ssl_context=context).start()
-            await web.TCPSite(runner, self.host, self.setup_port).start()
             self._loop = asyncio.get_running_loop()
             self._stop = asyncio.Event()
+            self._offer_lock = asyncio.Lock()
+            await web.TCPSite(runner, self.host, self.https_port, ssl_context=context).start()
+            await web.TCPSite(runner, self.host, self.setup_port).start()
             self._ready.set()
             await self._stop.wait()
         finally:
-            await asyncio.gather(*(peer.close() for peer in tuple(self._peers)))
+            await asyncio.gather(
+                *(peer.close() for peer in tuple(self._peers)),
+                return_exceptions=True,
+            )
+            self._peers.clear()
             await runner.cleanup()
 
     async def _index(self, _request):
@@ -114,34 +125,48 @@ class WebRTCCamera:
         except (KeyError, TypeError, ValueError) as error:
             raise web.HTTPBadRequest(text="Invalid WebRTC offer") from error
 
-        await asyncio.gather(*(peer.close() for peer in tuple(self._peers)))
-        self._peers.clear()
-        self._alerts = None
-        peer = RTCPeerConnection()
-        self._peers.add(peer)
+        async with self._offer_lock:
+            await asyncio.gather(
+                *(peer.close() for peer in tuple(self._peers)),
+                return_exceptions=True,
+            )
+            self._peers.clear()
+            self._alerts = None
 
-        @peer.on("track")
-        def on_track(track):
-            if track.kind == "video":
-                asyncio.create_task(self._receive(track))
+            # The phone reaches this server over the LAN, so public STUN adds
+            # latency and can leave retry timers behind during reconnects.
+            peer = RTCPeerConnection(RTCConfiguration(iceServers=[]))
+            self._peers.add(peer)
 
-        @peer.on("datachannel")
-        def on_data_channel(channel):
-            if channel.label == "alerts":
-                self._alerts = channel
+            @peer.on("track")
+            def on_track(track):
+                if track.kind == "video":
+                    asyncio.create_task(self._receive(track))
 
-        @peer.on("connectionstatechange")
-        async def on_connection_state_change():
-            if peer.connectionState in ("failed", "closed"):
-                await peer.close()
+            @peer.on("datachannel")
+            def on_data_channel(channel):
+                if channel.label == "alerts":
+                    self._alerts = channel
+
+            @peer.on("connectionstatechange")
+            async def on_connection_state_change():
+                if peer.connectionState == "failed":
+                    await peer.close()
+                if peer.connectionState in ("failed", "closed"):
+                    self._peers.discard(peer)
+
+            try:
+                await peer.setRemoteDescription(description)
+                answer = await peer.createAnswer()
+                await peer.setLocalDescription(answer)
+            except Exception:
                 self._peers.discard(peer)
+                await peer.close()
+                raise
 
-        await peer.setRemoteDescription(description)
-        answer = await peer.createAnswer()
-        await peer.setLocalDescription(answer)
-        return web.json_response(
-            {"sdp": peer.localDescription.sdp, "type": peer.localDescription.type}
-        )
+            return web.json_response(
+                {"sdp": peer.localDescription.sdp, "type": peer.localDescription.type}
+            )
 
     async def _receive(self, track):
         try:
