@@ -8,6 +8,7 @@ import numpy
 
 from app.capture.camera_feed import (
     ContinuityCamera,
+    _license_barcode,
     _profile_message,
     local_hostname,
 )
@@ -72,6 +73,16 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(message["record"]["active_warrant"])
         self.assertNotIn("ignored", message["record"])
         self.assertTrue(message["photo"])
+
+    def test_camera_accepts_only_bounded_license_messages(self):
+        barcode = "ANSI 636000\nDAQD1234567"
+
+        self.assertEqual(
+            _license_barcode(json.dumps({"type": "license_scan", "raw": barcode})),
+            barcode,
+        )
+        self.assertIsNone(_license_barcode(json.dumps({"type": "other", "raw": barcode})))
+        self.assertIsNone(_license_barcode("not json"))
 
     def test_blank_image_has_no_face(self):
         self.assertEqual(detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8)), ())

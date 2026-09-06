@@ -27,6 +27,7 @@ CERT_DIR = ROOT / ".camera-feed"
 PHONE_PAGE = Path(__file__).with_name("phone.html")
 CONTINUITY_RUNNER = ROOT / "scripts/run_continuity.sh"
 MAX_FRAME_BYTES = 10_000_000
+MAX_LICENSE_BYTES = 8_000
 PROFILE_FIELDS = (
     "id",
     "record_status",
@@ -54,8 +55,9 @@ class WebRTCCamera:
         self.https_port = https_port
         self.setup_port = setup_port
         self.frames = deque(maxlen=1)
+        self.license_scans = deque(maxlen=4)
         self._peers = set()
-        self._alerts = None
+        self._channel = None
         self._ready = threading.Event()
         self._loop = None
         self._stop = None
@@ -93,14 +95,22 @@ class WebRTCCamera:
             daemon=True,
         ).start()
 
+    def notify_license(self, result):
+        self._queue_message({"type": "license_result", **result.payload()})
+
     def _queue_profile(self, name, similarity, record, photo):
         message = _profile_message(name, similarity, record, photo)
         if self._loop:
             self._loop.call_soon_threadsafe(lambda: self._send(message))
 
+    def _queue_message(self, payload):
+        message = json.dumps(payload, separators=(",", ":"))
+        if self._loop:
+            self._loop.call_soon_threadsafe(lambda: self._send(message))
+
     def _send(self, message):
-        if self._alerts and self._alerts.readyState == "open":
-            self._alerts.send(message)
+        if self._channel and self._channel.readyState == "open":
+            self._channel.send(message)
 
     def _run(self):
         try:
@@ -160,7 +170,7 @@ class WebRTCCamera:
                 return_exceptions=True,
             )
             self._peers.clear()
-            self._alerts = None
+            self._channel = None
 
             # The phone reaches this server over the LAN, so public STUN adds
             # latency and can leave retry timers behind during reconnects.
@@ -175,7 +185,13 @@ class WebRTCCamera:
             @peer.on("datachannel")
             def on_data_channel(channel):
                 if channel.label == "alerts":
-                    self._alerts = channel
+                    self._channel = channel
+
+                    @channel.on("message")
+                    def on_message(message):
+                        barcode = _license_barcode(message)
+                        if barcode:
+                            self.license_scans.append(barcode)
 
             @peer.on("connectionstatechange")
             async def on_connection_state_change():
@@ -214,6 +230,7 @@ class ContinuityCamera:
         self.host = host
         self.port = port
         self.frames = deque(maxlen=1)
+        self.license_scans = deque(maxlen=1)
         self._stop = threading.Event()
         self._connection = None
         self._thread = None
@@ -232,6 +249,9 @@ class ContinuityCamera:
         subprocess.run(["pkill", "-x", "PhoneCamera"], check=False)
 
     def notify_profile(self, _name, _similarity, _record, _photo=None):
+        pass
+
+    def notify_license(self, _result):
         pass
 
     def _receive(self):
@@ -293,3 +313,14 @@ def _profile_message(name, similarity, record, photo=None):
             if encoded:
                 payload["photo"] = base64.b64encode(jpeg).decode("ascii")
     return json.dumps(payload, separators=(",", ":"))
+
+
+def _license_barcode(message):
+    if not isinstance(message, str) or len(message.encode("utf-8")) > MAX_LICENSE_BYTES:
+        return None
+    try:
+        payload = json.loads(message)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    barcode = payload.get("raw") if payload.get("type") == "license_scan" else None
+    return barcode if isinstance(barcode, str) and barcode.strip() else None

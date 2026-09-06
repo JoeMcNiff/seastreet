@@ -16,12 +16,14 @@ from app.capture.camera_feed import ContinuityCamera, WebRTCCamera
 from app.detection.face_detection import FaceDetectionWorker
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 from app.records.criminal_records import CriminalRecordsService
+from app.records.licenses import LicenseService
 from app.ui.live_panel import render_live_window
 
 WINDOW = "Camera - Face Detection"
 SEARCH_RETRY_SECONDS = 0.5
 MIN_FACE_PIXELS = 40
 SAMPLE_WINDOW_SECONDS = 0.3
+LICENSE_COOLDOWN_SECONDS = 8
 BRAND_BLUE = (138, 74, 0)  # OpenCV uses BGR: #004A8A
 
 
@@ -53,6 +55,10 @@ def recognize_face(service, sample, track_id, generation, results):
 
 def find_records(service, identity_id, track_id, generation, results):
     results.append((track_id, generation, service.lookup(identity_id)))
+
+
+def find_license(service, barcode, results):
+    results.append(service.lookup(barcode))
 
 
 def select_face_sample(state, face, frame, now):
@@ -116,8 +122,14 @@ def main(camera_kind="webrtc"):
         tracked_faces = ()
         recognition = FacialRecognitionService.from_environment()
         records = CriminalRecordsService(recognition.supabase)
+        licenses = LicenseService(recognition.supabase)
         recognition_results = deque()
         records_results = deque()
+        license_results = deque()
+        license_pending = None
+        license_running = False
+        last_barcode = None
+        last_barcode_at = 0
         states = {}
         selected_track_id = None
         stream_connected = False
@@ -244,6 +256,54 @@ def main(camera_kind="webrtc"):
                         result.records[0],
                         state.photo,
                     )
+
+            while camera.license_scans:
+                barcode = camera.license_scans.popleft()
+                now = time.monotonic()
+                if barcode != last_barcode or now - last_barcode_at >= LICENSE_COOLDOWN_SECONDS:
+                    license_pending = barcode
+                    last_barcode, last_barcode_at = barcode, now
+
+            if license_pending is not None and not license_running:
+                barcode, license_pending = license_pending, None
+                license_running = True
+                log("license_scan_received", "Driver license barcode received")
+                threading.Thread(
+                    target=find_license,
+                    args=(licenses, barcode, license_results),
+                    daemon=True,
+                ).start()
+
+            while license_results:
+                result = license_results.popleft()
+                license_running = False
+                camera.notify_license(result)
+                if result.error:
+                    print(f"License lookup error: {result.error}")
+                record = result.record or {}
+                scan = result.scan
+                name = " ".join(
+                    filter(None, (record.get("first_name"), record.get("last_name")))
+                )
+                message = {
+                    "license_found": f"Driver license matched {name or 'DMV record'}",
+                    "license_expired": "Expired driver license detected",
+                    "license_mismatch": "Driver license data mismatch",
+                    "license_not_found": "Driver license not found in DMV records",
+                    "invalid_barcode": "PDF417 barcode was not a readable driver license",
+                    "lookup_unavailable": "DMV lookup unavailable",
+                }[result.status]
+                log(
+                    "license_lookup_result",
+                    message,
+                    lookup_status=result.status,
+                    license_number_last4=scan.number[-4:] if scan else None,
+                    license_state=scan.state if scan else None,
+                    license_record_id=record.get("id"),
+                    identity_id=record.get("identity_id"),
+                    mismatches=result.mismatches,
+                    error=result.error,
+                )
 
             if frame is not None:
                 if not stream_connected:

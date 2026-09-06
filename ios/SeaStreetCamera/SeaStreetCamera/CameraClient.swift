@@ -10,12 +10,15 @@ final class CameraClient: NSObject, ObservableObject {
     @Published private(set) var connected = false
     @Published private(set) var showingAlert = false
     @Published var criminalProfile: CriminalProfile?
+    @Published var licenseResult: LicenseLookup?
     @Published private(set) var videoTrack: RTCVideoTrack?
 
     private let factory: RTCPeerConnectionFactory
     private var capturer: RTCCameraVideoCapturer?
+    private var licenseScanner: LicenseScanner?
     private var peer: RTCPeerConnection?
     private var alerts: RTCDataChannel?
+    private var pendingLicense: String?
     private var serverURL: URL?
     private var running = false
     private var offerSent = false
@@ -59,6 +62,8 @@ final class CameraClient: NSObject, ObservableObject {
         peer = nil
         oldPeer?.close()
         capturer?.stopCapture()
+        licenseScanner = nil
+        pendingLicense = nil
         UIApplication.shared.isIdleTimerDisabled = false
         connected = false
     }
@@ -111,6 +116,12 @@ final class CameraClient: NSObject, ObservableObject {
             if let error {
                 self.publish("Camera failed: \(error.localizedDescription)", started: false)
             } else {
+                let scanner = LicenseScanner { [weak self] value in
+                    self?.queueLicense(value)
+                }
+                if scanner.install(on: capturer.captureSession) {
+                    self.licenseScanner = scanner
+                }
                 self.connect(track)
             }
         }
@@ -124,6 +135,7 @@ final class CameraClient: NSObject, ObservableObject {
         reconnect?.cancel()
         let oldPeer = peer
         peer = nil
+        alerts = nil
         oldPeer?.close()
 
         let configuration = RTCConfiguration()
@@ -224,17 +236,51 @@ final class CameraClient: NSObject, ObservableObject {
 
     private func alert(_ profile: CriminalProfile) {
         DispatchQueue.main.async {
-            AudioServicesPlaySystemSound(self.warrantSound)
-            for index in 0..<4 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.18) {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                }
-            }
+            self.playWarning()
             self.criminalProfile = profile
             self.showingAlert = true
             self.status = "Criminal record found"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 self.showingAlert = false
+            }
+        }
+    }
+
+    func dismissLicense() {
+        licenseResult = nil
+    }
+
+    private func queueLicense(_ value: String) {
+        DispatchQueue.main.async {
+            self.pendingLicense = value
+            self.flushLicense()
+        }
+    }
+
+    private func flushLicense() {
+        guard alerts?.readyState == .open, let value = pendingLicense,
+              let data = try? JSONSerialization.data(withJSONObject: [
+                "type": "license_scan", "raw": value,
+              ]) else { return }
+        if alerts?.sendData(RTCDataBuffer(data: data, isBinary: false)) == true {
+            pendingLicense = nil
+        }
+    }
+
+    private func showLicense(_ result: LicenseLookup) {
+        DispatchQueue.main.async {
+            self.licenseResult = result
+            if result.shouldAlert {
+                self.playWarning()
+            }
+        }
+    }
+
+    private func playWarning() {
+        AudioServicesPlaySystemSound(warrantSound)
+        for index in 0..<4 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.18) {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
             }
         }
     }
@@ -347,7 +393,9 @@ extension CameraClient: RTCPeerConnectionDelegate {
 }
 
 extension CameraClient: RTCDataChannelDelegate {
-    func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {}
+    func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
+        DispatchQueue.main.async { self.flushLicense() }
+    }
 
     func dataChannel(
         _ dataChannel: RTCDataChannel,
@@ -357,6 +405,10 @@ extension CameraClient: RTCDataChannelDelegate {
             CriminalProfile.self, from: buffer.data
         ), profile.type == "criminal_profile" {
             alert(profile)
+        } else if let result = try? JSONDecoder().decode(
+            LicenseLookup.self, from: buffer.data
+        ), result.type == "license_result" {
+            showLicense(result)
         }
     }
 }

@@ -21,7 +21,7 @@
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>NSCameraUsageDescription</key>
-    <string>Robin Cam uses the camera to stream video to your local demo.</string>
+    <string>Robin Cam uses the camera to stream video and scan driver-license barcodes for your local demo.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Robin Cam connects to the local laptop running the demo.</string>
     <key>NSAppTransportSecurity</key>

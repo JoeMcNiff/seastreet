@@ -81,6 +81,41 @@ struct CameraScreen: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            if let license = camera.licenseResult {
+                VStack {
+                    HStack(spacing: 12) {
+                        Circle()
+                            .fill(license.shouldAlert ? Color.red : Color.green)
+                            .frame(width: 10, height: 10)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(license.message)
+                                .font(.caption.weight(.black))
+                            if let name = license.name {
+                                Text(name.uppercased())
+                                    .font(.caption2.weight(.bold))
+                            }
+                            Text([license.state, license.number].compactMap { $0 }.joined(separator: "  "))
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        }
+                        Spacer()
+                        Button(action: camera.dismissLicense) {
+                            Image(systemName: "xmark")
+                                .font(.caption.weight(.bold))
+                        }
+                    }
+                    .foregroundStyle(.black)
+                    .padding(13)
+                    .background(Color(white: 0.97))
+                    .overlay(Rectangle().stroke(brandBlue, lineWidth: 2))
+                    .shadow(color: .black.opacity(0.4), radius: 10)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 62)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(3)
+            }
+
             if let profile = camera.criminalProfile {
                 VStack {
                     Spacer()
@@ -94,6 +129,7 @@ struct CameraScreen: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: camera.showingAlert)
+        .animation(.easeInOut(duration: 0.2), value: camera.licenseResult?.id)
         .animation(.easeInOut(duration: 0.25), value: camera.criminalProfile?.id)
         .onDisappear { camera.stop() }
     }

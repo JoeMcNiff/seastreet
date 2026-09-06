@@ -7,6 +7,7 @@ import numpy
 from app.providers.clearview import ClearviewClient, ClearviewError, ClearviewNoFace
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 from app.records.criminal_records import CriminalRecordsService
+from app.records.licenses import LicenseService, parse_aamva
 from app.records.supabase import SupabaseClient
 from scripts.update_mock_criminal_records import OFFENSES, details_for, update_all
 
@@ -141,6 +142,57 @@ class IntegrationsTests(unittest.TestCase):
         self.assertTrue(result.records[0]["active_warrant"])
         self.assertIn("criminal_records?identity_id=eq.person-1", requests[0].full_url)
 
+    def test_aamva_driver_license_is_parsed(self):
+        scan = parse_aamva(
+            "@\nANSI 636026080102DL00410288DLDAQD1234567\n"
+            "DCSDOE\nDACJANE\nDBB01021990\nDBA12312099\n"
+            "DBD01012025\nDBC2\nDAJCA"
+        )
+
+        self.assertEqual(scan.number, "D1234567")
+        self.assertEqual(scan.first_name, "JANE")
+        self.assertEqual(scan.last_name, "DOE")
+        self.assertEqual(scan.date_of_birth, "1990-01-02")
+        self.assertEqual(scan.expiration_date, "2099-12-31")
+        self.assertEqual(scan.sex, "F")
+        self.assertEqual(scan.state, "CA")
+
+    def test_driver_license_is_compared_with_supabase(self):
+        class Licenses:
+            def licenses_by_number(self, number, state):
+                self.query = number, state
+                return ({
+                    "id": 7,
+                    "identity_id": "person-1",
+                    "number": "D1234567",
+                    "state": "CA",
+                    "first_name": "Jane",
+                    "last_name": "Doe",
+                    "date_of_birth": "1990-01-02",
+                    "expiration_date": "2099-12-31",
+                },)
+
+        supabase = Licenses()
+        result = LicenseService(supabase).lookup(
+            "ANSI 636026\nDAQD1234567\nDAJCA\nDACJANE\nDCSDOE\nDBB01021990"
+        )
+
+        self.assertEqual(result.status, "license_found")
+        self.assertEqual(supabase.query, ("D1234567", "CA"))
+        self.assertEqual(result.payload()["name"], "Jane Doe")
+
+    def test_supabase_license_lookup_uses_number_and_state(self):
+        requests = []
+        client = SupabaseClient(
+            "https://example.supabase.co",
+            "key",
+            opener=lambda request, timeout: requests.append(request) or Response([]),
+        )
+
+        self.assertEqual(client.licenses_by_number("D1234567", "CA"), ())
+        self.assertIn("number=ilike.D1234567", requests[0].full_url)
+        self.assertIn("state=ilike.CA", requests[0].full_url)
+
     def test_mock_criminal_records_are_consistent(self):
         for record_id in range(1, len(OFFENSES) + 1):
             values = details_for(record_id)
@@ -204,7 +256,44 @@ class IntegrationsTests(unittest.TestCase):
         self.assertTrue(
             requests[1].full_url.endswith("criminal_records?select=id&limit=1")
         )
-        self.assertEqual(len(requests), 2)
+        self.assertTrue(requests[2].full_url.endswith("licenses?select=id&limit=1"))
+        self.assertEqual(len(requests), 3)
+
+    def test_supabase_lists_identities_for_bucket_name_matching(self):
+        requests = []
+        client = SupabaseClient(
+            "https://example.supabase.co",
+            "key",
+            opener=lambda request, timeout: requests.append(request)
+            or Response([{"id": "person-1", "display_name": "Jane Doe"}]),
+        )
+
+        identities = client.list_identities()
+
+        self.assertEqual(identities[0]["display_name"], "Jane Doe")
+        self.assertIn("select=id,external_ref,display_name,status", requests[0].full_url)
+
+    def test_supabase_assigns_image_to_only_the_folder_identity(self):
+        requests = []
+        responses = iter(
+            (
+                Response([]),
+                Response([{"identity_id": "person-1", "image_id": "image-1"}]),
+            )
+        )
+        client = SupabaseClient(
+            "https://example.supabase.co",
+            "key",
+            opener=lambda request, timeout: requests.append(request) or next(responses),
+        )
+
+        link = client.assign_image_identity("person-1", "image-1")
+
+        self.assertEqual(link["identity_id"], "person-1")
+        self.assertEqual(requests[0].method, "PATCH")
+        self.assertIn("image_id=eq.image-1", requests[0].full_url)
+        self.assertIn("identity_id=neq.person-1", requests[0].full_url)
+        self.assertEqual(requests[1].method, "POST")
 
     def test_face_embedding_is_matched_and_grouped_by_identity(self):
         unit = tuple([1.0] + [0.0] * 511)

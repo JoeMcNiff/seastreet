@@ -14,8 +14,9 @@
    **Start Camera**.
 
 Robin Cam captures the rear camera at 1080p/30 fps, sends up to 8 Mbps over WebRTC,
-and plays criminal-record alerts. Keep the app foregrounded and both devices on
-the same local network.
+scans PDF417 driver-license barcodes, and plays criminal-record and invalid-ID
+alerts. A valid license lookup is silent. Keep the app foregrounded and both
+devices on the same local network.
 
 The existing SeaStreet local certificate must be trusted on the phone. If it is
 not, use the certificate URL printed by `python -m app.ui.demo`, install the

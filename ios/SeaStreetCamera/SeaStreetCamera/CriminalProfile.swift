@@ -41,3 +41,25 @@ struct CriminalRecord: Decodable {
         case warrantIssueDate = "warrant_issue_date"
     }
 }
+
+struct LicenseLookup: Decodable, Identifiable {
+    let type: String
+    let status: String
+    let message: String
+    let name: String?
+    let number: String?
+    let state: String?
+    let expirationDate: String?
+    let mismatches: [String]
+
+    var id: String { "\(status)-\(state ?? "")-\(number ?? "")" }
+    var shouldAlert: Bool {
+        ["license_expired", "license_mismatch", "license_not_found", "invalid_barcode"]
+            .contains(status)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type, status, message, name, number, state, mismatches
+        case expirationDate = "expiration_date"
+    }
+}
