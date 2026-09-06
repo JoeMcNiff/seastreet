@@ -20,6 +20,13 @@ class DetectedFace:
     rect: tuple
     ready: bool
     reason: str
+    tracked_rect: tuple = None
+    confidence: float = 1.0
+    landmarks: tuple = ()
+
+    @property
+    def display_rect(self):
+        return self.tracked_rect or self.rect
 
     def crop(self, frame, padding=0.35):
         """Return an independent, padded copy of this face."""
@@ -33,6 +40,37 @@ class DetectedFace:
         right = min(frame.shape[1], x + width + x_pad)
         bottom = min(frame.shape[0], y + height + y_pad)
         return frame[top:bottom, left:right].copy(), (x - left, y - top, width, height)
+
+    def quality(self, frame):
+        """Score recognition usefulness without requiring a frontal face."""
+        x, y, width, height = self.rect
+        gray = cv2.cvtColor(frame[y : y + height, x : x + width], cv2.COLOR_BGR2GRAY)
+        if not gray.size:
+            return 0.0
+        confidence = min(1.0, max(0.0, (self.confidence - 0.45) / 0.55))
+        size = min(1.0, min(width, height) / 160)
+        sharpness = min(1.0, cv2.Laplacian(gray, cv2.CV_64F).var() / 120)
+        exposure = max(0.0, 1 - abs(float(gray.mean()) - 127.5) / 100)
+        edges = sum(
+            (x == 0, y == 0, x + width == frame.shape[1], y + height == frame.shape[0])
+        )
+        visible = 1 - edges / 4
+        inside = (
+            sum(
+                x <= point_x <= x + width and y <= point_y <= y + height
+                for point_x, point_y in self.landmarks
+            )
+            / len(self.landmarks)
+            if self.landmarks
+            else 1
+        )
+        return (
+            0.30 * confidence
+            + 0.25 * size
+            + 0.25 * sharpness
+            + 0.15 * exposure
+            + 0.05 * (visible + inside) / 2
+        )
 
 
 class FaceTracker:
@@ -98,9 +136,12 @@ class FaceTracker:
             (
                 assignments[index],
                 DetectedFace(
-                    tuple(round(value) for value in self._tracks[assignments[index]][0]),
+                    face.rect,
                     face.ready,
                     face.reason,
+                    tuple(round(value) for value in self._tracks[assignments[index]][0]),
+                    face.confidence,
+                    face.landmarks,
                 ),
             )
             for index, face in enumerate(faces)
@@ -120,9 +161,10 @@ def _similarity(first, second):
     ax, ay, aw, ah = first
     bx, by, bw, bh = second
     distance = hypot(ax + aw / 2 - bx - bw / 2, ay + ah / 2 - by - bh / 2)
-    proximity = max(0, 1 - distance / (2 * max(aw, ah, bw, bh)))
+    reach = 1.5 * hypot(max(aw, bw), max(ah, bh))
+    proximity = max(0, 1 - distance / reach)
     size = min(aw * ah, bw * bh) / max(aw * ah, bw * bh)
-    return max(_overlap(first, second), 0.7 * proximity + 0.3 * size)
+    return max(_overlap(first, second), proximity * size**0.5)
 
 
 def _move(rect, velocity, frames):
@@ -157,7 +199,8 @@ def detect_faces(frame):
 
     results = []
     frame_height, frame_width = frame.shape[:2]
-    for x, y, face_width, face_height in faces[:, :4]:
+    for detection in faces:
+        x, y, face_width, face_height = detection[:4]
         left = max(0, round(x / scale))
         top = max(0, round(y / scale))
         right = min(frame_width, round((x + face_width) / scale))
@@ -165,7 +208,16 @@ def detect_faces(frame):
         if right <= left or bottom <= top:
             continue
         results.append(
-            DetectedFace((left, top, right - left, bottom - top), True, "SEARCHING...")
+            DetectedFace(
+                (left, top, right - left, bottom - top),
+                True,
+                "SEARCHING...",
+                confidence=float(detection[14]),
+                landmarks=tuple(
+                    (round(detection[index] / scale), round(detection[index + 1] / scale))
+                    for index in range(4, 14, 2)
+                ),
+            )
         )
 
     return tuple(results)

@@ -18,6 +18,7 @@ from app.detection.face_detection import (
     detect_faces,
 )
 from app.providers.face_recognition import FacialRecognitionService
+from app.ui.demo import PersonState, SAMPLE_WINDOW_SECONDS, select_face_sample
 from app.ui.live_panel import render_live_window
 
 
@@ -96,6 +97,14 @@ class CoreTests(unittest.TestCase):
 
         self.assertTrue(face.ready)
 
+    def test_detector_preserves_confidence_and_landmarks(self):
+        values = (100, 100, 100, 100, 120, 130, 180, 130, 150, 155, 125, 180, 175, 180, 0.9)
+        with patch("app.detection.face_detection.DETECTOR", Detector((values,))):
+            face = detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8))[0]
+
+        self.assertAlmostEqual(face.confidence, 0.9)
+        self.assertEqual(len(face.landmarks), 5)
+
     def test_face_box_is_clamped_to_frame(self):
         with patch(
             "app.detection.face_detection.DETECTOR",
@@ -154,14 +163,42 @@ class CoreTests(unittest.TestCase):
 
         self.assertEqual(first_id, second_id)
 
-    def test_tracked_face_box_is_smoothed(self):
+    def test_distant_face_does_not_inherit_an_occluded_track(self):
+        tracker = FaceTracker()
+        ready = lambda rect: DetectedFace(rect, True, "SEARCHING...")
+
+        first_id = tracker.update((ready((100, 100, 100, 100)),))[0][0]
+        for _ in range(20):
+            tracker.update(())
+        distant_id = tracker.update((ready((1000, 100, 100, 100)),))[0][0]
+
+        self.assertNotEqual(first_id, distant_id)
+
+    def test_tracking_smooths_display_but_preserves_current_detection(self):
         tracker = FaceTracker()
         ready = lambda rect: DetectedFace(rect, True, "SEARCHING...")
         tracker.update((ready((100, 100, 100, 100)),))
 
         _track_id, face = tracker.update((ready((120, 110, 100, 100)),))[0]
 
-        self.assertEqual(face.rect, (113, 106, 100, 100))
+        self.assertEqual(face.rect, (120, 110, 100, 100))
+        self.assertEqual(face.display_rect, (113, 106, 100, 100))
+
+    def test_best_face_sample_is_selected_from_short_window(self):
+        state = PersonState()
+        face = DetectedFace((20, 20, 60, 60), True, "SEARCHING...", confidence=0.9)
+        blurred = numpy.full((100, 100, 3), 127, dtype=numpy.uint8)
+        sharp = blurred.copy()
+        sharp[20:80:2, 20:80] = 0
+        sharp[21:80:2, 20:80] = 255
+
+        self.assertIsNone(select_face_sample(state, face, blurred, 10.0))
+        self.assertIsNone(select_face_sample(state, face, sharp, 10.15))
+        selected = select_face_sample(state, face, blurred, 10.01 + SAMPLE_WINDOW_SECONDS)
+
+        sample, quality = selected
+        self.assertGreater(quality, face.quality(blurred))
+        self.assertTrue(numpy.array_equal(sample.frame, face.crop(sharp)))
 
     def test_unconfigured_face_recognition_skips_providers(self):
         service = FacialRecognitionService()

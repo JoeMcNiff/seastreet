@@ -21,6 +21,7 @@ from app.ui.live_panel import render_live_window
 WINDOW = "Camera - Face Detection"
 SEARCH_RETRY_SECONDS = 0.5
 MIN_FACE_PIXELS = 40
+SAMPLE_WINDOW_SECONDS = 0.3
 BRAND_BLUE = (138, 74, 0)  # OpenCV uses BGR: #004A8A
 
 
@@ -40,6 +41,10 @@ class PersonState:
     records: tuple = ()
     photo: object = None
     active: bool = True
+    sample_started_at: float = None
+    sample_seen_at: float = None
+    best_sample: object = None
+    best_sample_quality: float = -1
 
 
 def recognize_face(service, sample, track_id, generation, results):
@@ -48,6 +53,28 @@ def recognize_face(service, sample, track_id, generation, results):
 
 def find_records(service, identity_id, track_id, generation, results):
     results.append((track_id, generation, service.lookup(identity_id)))
+
+
+def select_face_sample(state, face, frame, now):
+    if state.sample_seen_at is None or now - state.sample_seen_at > SAMPLE_WINDOW_SECONDS:
+        state.sample_started_at = now
+        state.best_sample = None
+        state.best_sample_quality = -1
+    state.sample_seen_at = now
+
+    quality = face.quality(frame)
+    if quality > state.best_sample_quality:
+        sample_frame, sample_rect = face.sample(frame)
+        state.best_sample = FaceSample(sample_frame, sample_rect, face.rect)
+        state.best_sample_quality = quality
+    if now - state.sample_started_at < SAMPLE_WINDOW_SECONDS:
+        return None
+
+    sample = state.best_sample, state.best_sample_quality
+    state.sample_started_at = state.sample_seen_at = None
+    state.best_sample = None
+    state.best_sample_quality = -1
+    return sample
 
 
 def show_waiting(display):
@@ -263,9 +290,11 @@ def main(camera_kind="webrtc"):
                         and not state.running
                         and now >= state.retry_at
                     ):
-                        sample_frame, sample_rect = face.sample(detected_frame)
-                        sample = FaceSample(sample_frame, sample_rect, face.rect)
-                        state.photo = sample_frame.copy()
+                        selected = select_face_sample(state, face, detected_frame, now)
+                        if selected is None:
+                            continue
+                        sample, sample_quality = selected
+                        state.photo = sample.frame
                         state.generation += 1
                         state.running = True
                         state.status = "searching"
@@ -277,6 +306,7 @@ def main(camera_kind="webrtc"):
                             track_id=track_id,
                             face_rect=sample.source_rect,
                             crop_rect=sample.rect,
+                            sample_quality=round(sample_quality, 3),
                             generation=state.generation,
                             provider_request_id=state.recognition_request_id,
                         )
@@ -297,7 +327,7 @@ def main(camera_kind="webrtc"):
                 label = "ROBIN INTELLIGENCE."
                 for track_id, face in tracked_faces:
                     state = states[track_id]
-                    x, y, width, height = face.rect
+                    x, y, width, height = face.display_rect
                     box_color = (70, 220, 120) if face.ready or state.name else (0, 180, 255)
                     cv2.rectangle(display, (x, y), (x + width, y + height), box_color, 3)
                     if state.name:
