@@ -27,7 +27,11 @@ Robin Cam uses the rear iPhone camera at 1080p/30 fps and sends the
 same WebRTC feed to the existing Python receiver. It also receives the existing
 criminal-record alerts, including sound and haptics. Criminal-record matches
 display the recognition face crop and record summary in a dismissible
-document-style sheet. The Safari page remains available as a zero-install fallback.
+document-style sheet. While streaming, the app also scans PDF417 driver-license
+barcodes natively and sends only the decoded data to Python for an asynchronous
+Supabase lookup. License results appear in a dismissible phone banner; invalid,
+expired, mismatched, and unknown licenses trigger the warning sound. The Safari
+page remains available as a zero-install fallback, but does not scan licenses.
 
 First, start the laptop receiver as usual:
 
@@ -101,6 +105,11 @@ matched people. Events are appended to `data/audit/events.jsonl`; optional
 operator, unit, encounter, predicate, and log-path values can be set using the
 variables in `.env.example`.
 
+To scan a license, keep its rear PDF417 barcode large, steady, and in focus in
+the Robin Cam preview. Scanning runs on the phone's native camera metadata path;
+the database lookup is limited to one background request at a time and does not
+share the face-detection worker.
+
 ## Clearview and Supabase
 
 Apply the SQL files in `supabase/migrations/` in numeric order to the existing
@@ -122,19 +131,40 @@ To import images already in the Supabase bucket, organize them by identity:
 
 ```text
 identity-images/
-├── jane-doe/
+├── jane_doe/
 │   ├── front.jpg
 │   └── alternate.png
-└── john-smith/
+└── john_smith/
     └── front.jpg
 ```
 
-The top-level folder becomes the identity's `external_ref`; its readable form
-is used as the initial display name. Apply the latest migration, then run:
+Top-level folders are the person's lowercase names joined with underscores.
+The importer matches this key against normalized existing display names, so
+`jane_doe` reuses `Jane Doe` even when that identity has a
+different `external_ref`. The folder-derived identity is authoritative: if an
+image was previously linked elsewhere, that old link is made inactive.
+Apply the latest migration, then run:
 
 ```bash
 python -m scripts.import_bucket_faces
 ```
+
+To process only a specific Supabase Storage bucket, pass its name explicitly:
+
+```bash
+python -m scripts.import_bucket_faces --bucket "bucket-name"
+```
+
+If a folder belongs to a person who has no identity yet, the importer creates
+one from the folder name (`jane_doe` becomes `Jane Doe`). Use an explicit
+override when the name needs special capitalization:
+
+```bash
+python -m scripts.import_bucket_faces --identity-name 'joe_mcniff=Joe McNiff'
+```
+
+Repeat `--identity-name` for multiple overrides. The importer creates an
+identity only after confirming that an image contains exactly one face.
 
 The importer downloads each JPEG/PNG, calls Clearview
 `/mlapi/v1/detect_and_embed`, and creates or reuses the identity, image, link,

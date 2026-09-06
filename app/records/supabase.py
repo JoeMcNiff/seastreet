@@ -40,6 +40,17 @@ class SupabaseClient:
         )
         return rows[0] if rows else None
 
+    def list_identities(self, page_size=1000):
+        identities = []
+        while True:
+            rows = self._request(
+                "/rest/v1/identities?select=id,external_ref,display_name,status&order=id"
+                f"&limit={page_size}&offset={len(identities)}"
+            )
+            identities.extend(rows)
+            if len(rows) < page_size:
+                return tuple(identities)
+
     def identity_name(self, identity_id):
         rows = self._request(
             "/rest/v1/identities"
@@ -56,10 +67,22 @@ class SupabaseClient:
         values.update(metadata)
         return self._upsert("identity_images", values, "storage_bucket,storage_path")
 
-    def link_image(self, identity_id, image_id):
+    def assign_image_identity(self, identity_id, image_id):
+        identity_id = str(identity_id)
+        image_id = str(image_id)
+        quoted_identity_id = quote(identity_id, safe="")
+        quoted_image_id = quote(image_id, safe="")
+        self._request(
+            "/rest/v1/identity_image_links"
+            f"?image_id=eq.{quoted_image_id}"
+            f"&identity_id=neq.{quoted_identity_id}&status=eq.active",
+            method="PATCH",
+            payload={"status": "inactive"},
+            headers={"Prefer": "return=minimal"},
+        )
         return self._upsert(
             "identity_image_links",
-            {"identity_id": identity_id, "image_id": image_id},
+            {"identity_id": identity_id, "image_id": image_id, "status": "active"},
             "identity_id,image_id",
         )
 
@@ -119,6 +142,14 @@ class SupabaseClient:
         if not rows:
             raise SupabaseError(f"Criminal record {record_id} was not updated")
         return rows[0]
+
+    def licenses_by_number(self, number, state=None):
+        query = f"number=ilike.{quote(str(number).strip(), safe='')}"
+        if state:
+            query += f"&state=ilike.{quote(str(state).strip(), safe='')}"
+        return tuple(
+            self._request(f"/rest/v1/licenses?{query}&select=*&limit=10")
+        )
 
     def image_by_storage_path(self, storage_path, bucket="identity-images"):
         rows = self._request(
@@ -192,6 +223,7 @@ class SupabaseClient:
     def health(self):
         self._request("/rest/v1/identities?select=id&limit=1")
         self._request("/rest/v1/criminal_records?select=id&limit=1")
+        self._request("/rest/v1/licenses?select=id&limit=1")
         return True
 
     def _request(self, path, method="GET", payload=None, headers=None, raw=False):
