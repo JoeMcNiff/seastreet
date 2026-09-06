@@ -1,44 +1,137 @@
-"""Receive Continuity Camera frames from the native viewer."""
+"""Receive an iPhone camera stream over WebRTC."""
 
+import asyncio
 import socket
-import struct
-import time
+import ssl
+import subprocess
+import threading
+from collections import deque
+from pathlib import Path
 
-HOST = "127.0.0.1"
-PORT = 8765
-MAX_FRAME_BYTES = 5_000_000
-
-
-def _read(socket_, size):
-    data = bytearray()
-    while len(data) < size:
-        chunk = socket_.recv(size - len(data))
-        if not chunk:
-            raise ConnectionError("Camera viewer disconnected")
-        data.extend(chunk)
-    return bytes(data)
+from aiohttp import web
+from aiortc import MediaStreamError, RTCPeerConnection, RTCSessionDescription
 
 
-def jpeg_frames(host=HOST, port=PORT):
-    """Yield complete JPEG frames, reconnecting when the viewer restarts."""
-    while True:
+ROOT = Path(__file__).resolve().parents[2]
+CERT_DIR = ROOT / ".camera-feed"
+PHONE_PAGE = Path(__file__).with_name("phone.html")
+
+
+def local_hostname():
+    name = socket.gethostname().removesuffix(".local")
+    return f"{name}.local"
+
+
+class WebRTCCamera:
+    def __init__(self, host="0.0.0.0", https_port=8443, setup_port=8080):
+        self.host = host
+        self.https_port = https_port
+        self.setup_port = setup_port
+        self.frames = deque(maxlen=1)
+        self._peers = set()
+        self._ready = threading.Event()
+        self._loop = None
+        self._stop = None
+        self._thread = None
+        self._error = None
+
+    @property
+    def camera_url(self):
+        return f"https://{local_hostname()}:{self.https_port}"
+
+    @property
+    def certificate_url(self):
+        return f"http://{local_hostname()}:{self.setup_port}/ca.crt"
+
+    def start(self):
+        subprocess.run(["/bin/bash", str(ROOT / "scripts/setup_webrtc_cert.sh")], check=True)
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        if not self._ready.wait(10):
+            raise RuntimeError("WebRTC camera server did not start")
+        if self._error:
+            raise RuntimeError(f"WebRTC camera server failed: {self._error}") from self._error
+
+    def stop(self):
+        if self._loop and self._stop:
+            self._loop.call_soon_threadsafe(self._stop.set)
+        if self._thread:
+            self._thread.join(timeout=5)
+
+    def _run(self):
         try:
-            with socket.create_connection((host, port)) as connection:
-                while True:
-                    size = struct.unpack("!I", _read(connection, 4))[0]
-                    if not 0 < size <= MAX_FRAME_BYTES:
-                        raise ConnectionError("Invalid frame size")
-                    yield _read(connection, size)
-        except (ConnectionError, OSError):
-            time.sleep(0.5)
+            asyncio.run(self._serve())
+        except Exception as error:
+            self._error = error
+            self._ready.set()
 
+    async def _serve(self):
+        app = web.Application()
+        app.router.add_get("/", self._index)
+        app.router.add_get("/ca.crt", self._certificate)
+        app.router.add_post("/offer", self._offer)
 
-def opencv_frames():
-    """Yield frames as OpenCV BGR arrays (requires opencv-python and numpy)."""
-    import cv2
-    import numpy
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(CERT_DIR / "server.crt", CERT_DIR / "server.key")
+        runner = web.AppRunner(app)
+        await runner.setup()
+        try:
+            await web.TCPSite(runner, self.host, self.https_port, ssl_context=context).start()
+            await web.TCPSite(runner, self.host, self.setup_port).start()
+            self._loop = asyncio.get_running_loop()
+            self._stop = asyncio.Event()
+            self._ready.set()
+            await self._stop.wait()
+        finally:
+            await asyncio.gather(*(peer.close() for peer in tuple(self._peers)))
+            await runner.cleanup()
 
-    for jpeg in jpeg_frames():
-        frame = cv2.imdecode(numpy.frombuffer(jpeg, dtype=numpy.uint8), cv2.IMREAD_COLOR)
-        if frame is not None:
-            yield frame
+    async def _index(self, _request):
+        return web.FileResponse(PHONE_PAGE)
+
+    async def _certificate(self, _request):
+        return web.FileResponse(
+            CERT_DIR / "ca.crt",
+            headers={
+                "Content-Disposition": 'attachment; filename="seastreet-camera-ca.crt"',
+                "Content-Type": "application/x-x509-ca-cert",
+            },
+        )
+
+    async def _offer(self, request):
+        try:
+            offer = await request.json()
+            description = RTCSessionDescription(sdp=offer["sdp"], type=offer["type"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise web.HTTPBadRequest(text="Invalid WebRTC offer") from error
+
+        await asyncio.gather(*(peer.close() for peer in tuple(self._peers)))
+        self._peers.clear()
+        peer = RTCPeerConnection()
+        self._peers.add(peer)
+
+        @peer.on("track")
+        def on_track(track):
+            if track.kind == "video":
+                asyncio.create_task(self._receive(track))
+
+        @peer.on("connectionstatechange")
+        async def on_connection_state_change():
+            if peer.connectionState in ("failed", "closed"):
+                await peer.close()
+                self._peers.discard(peer)
+
+        await peer.setRemoteDescription(description)
+        answer = await peer.createAnswer()
+        await peer.setLocalDescription(answer)
+        return web.json_response(
+            {"sdp": peer.localDescription.sdp, "type": peer.localDescription.type}
+        )
+
+    async def _receive(self, track):
+        try:
+            while True:
+                frame = await track.recv()
+                self.frames.append(frame.to_ndarray(format="bgr24"))
+        except (MediaStreamError, asyncio.CancelledError):
+            pass

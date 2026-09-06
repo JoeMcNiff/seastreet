@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SeaStreet Camera</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #090909; color: white; font: 17px system-ui; }
+  main { width: min(100%, 640px); padding: 20px; text-align: center; }
+  video { width: 100%; max-height: 75vh; background: black; border-radius: 12px; }
+  button { margin-top: 18px; padding: 14px 24px; border: 0; border-radius: 10px; font: inherit; font-weight: 700; }
+  #status { margin-top: 14px; color: #bbb; }
+</style>
+<main>
+  <video id="preview" autoplay muted playsinline></video>
+  <button id="start">Start Camera</button>
+  <div id="status">Ready</div>
+</main>
+<script>
+  const preview = document.querySelector("#preview");
+  const button = document.querySelector("#start");
+  const status = document.querySelector("#status");
+  let stream;
+  let peer;
+  let reconnectTimer;
+
+  function retry(error) {
+    if (error) status.textContent = error.message;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => connect().catch(retry), 2000);
+  }
+
+  async function waitForIce(candidate) {
+    if (candidate.iceGatheringState === "complete") return;
+    await new Promise(resolve => candidate.addEventListener("icegatheringstatechange", () => {
+      if (candidate.iceGatheringState === "complete") resolve();
+    }));
+  }
+
+  async function connect() {
+    clearTimeout(reconnectTimer);
+    const previous = peer;
+    peer = null;
+    if (previous) previous.close();
+    const candidate = new RTCPeerConnection();
+    peer = candidate;
+    stream.getTracks().forEach(track => candidate.addTrack(track, stream));
+    candidate.addEventListener("connectionstatechange", () => {
+      if (candidate !== peer) return;
+      status.textContent = candidate.connectionState === "connected" ? "Connected to laptop" : candidate.connectionState;
+      if (candidate.connectionState === "connected") clearTimeout(reconnectTimer);
+      else if (["failed", "disconnected", "closed"].includes(candidate.connectionState)) retry();
+    });
+    await candidate.setLocalDescription(await candidate.createOffer());
+    await waitForIce(candidate);
+    const response = await fetch("/offer", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(candidate.localDescription)
+    });
+    if (!response.ok) throw new Error(await response.text());
+    if (candidate === peer) await candidate.setRemoteDescription(await response.json());
+  }
+
+  async function start() {
+    button.disabled = true;
+    status.textContent = "Starting camera…";
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {facingMode: {ideal: "environment"}, width: {ideal: 1280}, height: {ideal: 720}}
+      });
+      preview.srcObject = stream;
+      navigator.wakeLock?.request("screen").catch(() => {});
+      await connect();
+      button.hidden = true;
+    } catch (error) {
+      status.textContent = error.message;
+      button.disabled = false;
+    }
+  }
+
+  button.addEventListener("click", start);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && stream && peer?.connectionState !== "connected") connect().catch(retry);
+  });
+</script>
+</html>
