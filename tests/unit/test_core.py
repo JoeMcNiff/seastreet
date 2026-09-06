@@ -1,10 +1,9 @@
-import socket
 import unittest
 from unittest.mock import patch
 
 import numpy
 
-from app.capture.camera_feed import _read
+from app.capture.camera_feed import local_hostname
 from app.detection.face_detection import DetectedFace, FaceTracker, detect_faces
 from app.providers.face_recognition import FacialRecognitionService
 
@@ -25,12 +24,9 @@ def detection(x, y, width, height):
 
 
 class CoreTests(unittest.TestCase):
-    def test_socket_reader_collects_a_complete_frame(self):
-        reader, writer = socket.socketpair()
-        self.addCleanup(reader.close)
-        self.addCleanup(writer.close)
-        writer.sendall(b"frame")
-        self.assertEqual(_read(reader, 5), b"frame")
+    @patch("app.capture.camera_feed.socket.gethostname", return_value="Demo-Mac.local")
+    def test_camera_url_uses_local_hostname(self, _hostname):
+        self.assertEqual(local_hostname(), "Demo-Mac.local")
 
     def test_blank_image_has_no_face(self):
         self.assertEqual(detect_faces(numpy.zeros((480, 640, 3), dtype=numpy.uint8)), ())

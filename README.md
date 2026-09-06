@@ -1,7 +1,8 @@
 # iPhone Camera
 
-A native macOS Continuity Camera helper with a local-only Python frame bridge.
-Nothing needs to be opened on the iPhone.
+An iPhone camera streams over WebRTC to the Python application on the Mac.
+The Mac displays and processes the video with OpenCV; Continuity Camera is not
+used.
 
 ## Demo setup
 
@@ -20,13 +21,25 @@ After that, run the demo with:
 python -m app.ui.demo
 ```
 
-Use `bash scripts/run.sh` when you only want the unannotated native camera
-preview. Normally you do not need to run it separately because the demo
-launches a fresh copy automatically.
+The terminal prints the iPhone camera URL. Keep the Mac and iPhone on the same
+Wi-Fi network, open that URL in Safari, and tap **Start Camera**. Keep Safari
+open and the iPhone unlocked while streaming. Press `Q` or Escape to close the
+laptop window. Allow incoming network connections if macOS asks.
 
-Allow camera access when macOS asks. The Mac and iPhone must use the same Apple
-Account, with Wi-Fi, Bluetooth, and Continuity Camera enabled. Keep the iPhone
-nearby and locked. Press `Q` or Escape to close the detection window.
+### First-time iPhone certificate setup
+
+Safari requires HTTPS before it will allow a webpage to use the camera. The
+demo generates its own local certificate and prints a separate certificate URL.
+On the iPhone, open that HTTP URL and then:
+
+1. Allow the configuration profile to download.
+2. Open **Settings → General → VPN & Device Management** and install it.
+3. Open **Settings → General → About → Certificate Trust Settings** and enable
+   full trust for **SeaStreet Camera Local CA**.
+4. Return to Safari and open the HTTPS camera URL printed by the demo.
+
+This setup is required once. The generated certificate and private keys stay
+in the ignored `.camera-feed/` directory on the Mac.
 
 Each detected face gets its own box and is searched independently; multiple
 people can be searched concurrently. Candidate names and scores
@@ -76,24 +89,21 @@ images on later runs. Use `--force` to regenerate existing embeddings.
 
 ## Use frames in Python
 
-The viewer publishes frames only on `127.0.0.1:8765`. Read JPEG bytes without
-dependencies:
+The WebRTC receiver exposes only the latest decoded OpenCV frame so latency
+cannot accumulate:
 
 ```python
-from app.capture.camera_feed import jpeg_frames
+from app.capture.camera_feed import WebRTCCamera
+import time
 
-for jpeg in jpeg_frames():
-    print(len(jpeg))
-```
-
-Or receive decoded OpenCV arrays:
-
-```python
-from app.capture.camera_feed import opencv_frames
-
-for frame in opencv_frames():
-    # frame is a NumPy BGR image
-    process(frame)
+camera = WebRTCCamera()
+camera.start()
+try:
+    while not camera.frames:
+        time.sleep(0.05)
+    frame = camera.frames.pop()  # NumPy BGR image
+finally:
+    camera.stop()
 ```
 
 Detect and crop every usable face independently:

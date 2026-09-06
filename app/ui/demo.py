@@ -1,27 +1,19 @@
-"""Continuity Camera preview with full-face readiness detection."""
+"""WebRTC camera preview with face detection and candidate matching."""
 
-import subprocess
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass
-from pathlib import Path
 
 import cv2
 import numpy
 
-from app.capture.camera_feed import opencv_frames
+from app.capture.camera_feed import WebRTCCamera
 from app.detection.face_detection import FaceTracker, detect_faces
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 
-ROOT = Path(__file__).resolve().parents[2]
 WINDOW = "Camera - Face Detection"
 SEARCH_RETRY_SECONDS = 4.0
-
-
-def receive_frames(frames):
-    for frame in opencv_frames():
-        frames.append(frame)
 
 
 @dataclass
@@ -44,25 +36,22 @@ def show_waiting(display):
 
 
 def main():
-    subprocess.run(
-        ["/usr/bin/arch", "-arm64", "/bin/bash", str(ROOT / "scripts/run.sh")],
-        check=True,
-    )
-
-    frames = deque(maxlen=1)
-    threading.Thread(target=receive_frames, args=(frames,), daemon=True).start()
-    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(WINDOW, 960, 640)
-
-    display = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
-    tracker = FaceTracker()
-    recognition = FacialRecognitionService.from_environment()
-    recognition_results = deque()
-    states = {}
-    last_frame_at = 0.0
-
-    print("Waiting for Camera… Press Q or Escape to close.")
+    camera = WebRTCCamera()
+    camera.start()
+    print(f"First time only, install the certificate from {camera.certificate_url}")
+    print(f"On the iPhone, open {camera.camera_url}")
+    print("Waiting for iPhone… Press Q or Escape to close.")
     try:
+        frames = camera.frames
+        cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW, 960, 640)
+        display = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
+        tracker = FaceTracker()
+        recognition = FacialRecognitionService.from_environment()
+        recognition_results = deque()
+        states = {}
+        last_frame_at = 0.0
+
         while True:
             try:
                 frame = frames.pop()
@@ -174,7 +163,7 @@ def main():
         pass
     finally:
         cv2.destroyAllWindows()
-        subprocess.run(["pkill", "-x", "PhoneCamera"], check=False)
+        camera.stop()
 
 
 if __name__ == "__main__":

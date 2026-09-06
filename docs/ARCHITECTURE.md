@@ -11,7 +11,7 @@ the UI.
 
 | Component | Responsibility | Does not own |
 | --- | --- | --- |
-| `app/capture` | Start/stop the native camera helper, receive JPEG frames, maintain a short rolling buffer | Identity decisions |
+| `app/capture` | Receive the iPhone's WebRTC stream and maintain only the latest decoded frame | Identity decisions |
 | `app/detection` | Detect visible faces and maintain anonymous subject tracks | Facial recognition or records access |
 | `app/workflow` | Validate the predicate, capture a face, gate review, and coordinate state transitions | Provider-specific HTTP or database code |
 | `app/providers` | Call Clearview `/embed`, validate the vector, and search for identity candidates | Local matching or human confirmation |
@@ -90,8 +90,8 @@ must never silently fall back to real-person data.
 
 ## Implementation order
 
-1. Extract the current feed client and detector behind `FrameSource` and
-   `SubjectTracker` without changing the working camera launch path.
+1. Keep the WebRTC receiver and detector behind `FrameSource` and
+   `SubjectTracker` contracts.
 2. Add subject selection, reason form, and face capture.
 3. Implement mock provider, human review, synthetic records, and audit events
    as one end-to-end vertical slice.
@@ -104,9 +104,8 @@ must never silently fall back to real-person data.
 1. What Clearview model/version and rate limit apply, and are OpenCV-generated
    rectangles accepted directly by `/embed` without a preceding `/detect` call?
 2. What exact search predicate and reviewer role should the demo require?
-3. Should the operator interact with the Mac UI, the iPhone, or both? The
-   current prototype has no iPhone control channel; it only streams camera
-   frames to the Mac.
+3. Should the phone camera page expose controls beyond starting and monitoring
+   its encrypted WebRTC stream?
 4. What Supabase project/table/schema and pgvector distance metric should the
    vector adapter target? What similarity threshold counts as a candidate?
 5. Should audit events be written to JSONL, SQLite, or Supabase during the
