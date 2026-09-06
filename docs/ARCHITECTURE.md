@@ -33,7 +33,7 @@ EventLog.append(event) -> event_id
 The intended Clearview path is:
 
 ```text
-one original frame + OpenCV face rectangle
+padded face crop + crop-relative OpenCV face rectangle
    -> ClearviewEmbeddingProvider (one authenticated `/embed` request)
    -> L2-normalized query embedding
    -> SupabaseVectorStore (pgvector similarity search)

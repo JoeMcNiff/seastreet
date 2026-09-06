@@ -13,7 +13,8 @@ from app.detection.face_detection import FaceTracker, detect_faces
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 
 WINDOW = "Camera - Face Detection"
-SEARCH_RETRY_SECONDS = 4.0
+SEARCH_RETRY_SECONDS = 1.0
+BRAND_BLUE = (138, 74, 0)  # OpenCV uses BGR: #004A8A
 
 
 @dataclass
@@ -31,8 +32,21 @@ def recognize_face(service, sample, track_id, generation, results):
 
 
 def show_waiting(display):
-    display[:] = 12
-    cv2.putText(display, "WAITING FOR CAMERA...", (220, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 180, 255), 2, cv2.LINE_AA)
+    display[:] = 0
+    cv2.putText(display, "WAITING FOR CAMERA...", (220, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.8, BRAND_BLUE, 2, cv2.LINE_AA)
+
+
+def fit_to_window(image):
+    _, _, window_width, window_height = cv2.getWindowImageRect(WINDOW)
+    if window_width <= 0 or window_height <= 0:
+        return image
+    scale = min(window_width / image.shape[1], window_height / image.shape[0])
+    width, height = round(image.shape[1] * scale), round(image.shape[0] * scale)
+    resized = cv2.resize(image, (width, height))
+    canvas = numpy.zeros((window_height, window_width, 3), dtype=numpy.uint8)
+    left, top = (window_width - width) // 2, (window_height - height) // 2
+    canvas[top : top + height, left : left + width] = resized
+    return canvas
 
 
 def main():
@@ -43,7 +57,7 @@ def main():
     print("Waiting for iPhone… Press Q or Escape to close.")
     try:
         frames = camera.frames
-        cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+        cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL | cv2.WINDOW_FREERATIO)
         cv2.resizeWindow(WINDOW, 960, 640)
         display = numpy.zeros((720, 1080, 3), dtype=numpy.uint8)
         tracker = FaceTracker()
@@ -125,8 +139,8 @@ def main():
                         state.status = None
 
                 matches = sum(bool(states[track_id].name) for track_id, _face in tracked_faces)
-                label = f"{len(tracked_faces)} FACES | {matches} IN-FRAME MATCHES"
-                color = (70, 220, 120) if matches else (0, 180, 255)
+                label = "ROBIN INTELLIGENCE."
+                color = (70, 220, 120) if matches else BRAND_BLUE
                 for track_id, face in tracked_faces:
                     state = states[track_id]
                     x, y, width, height = face.rect
@@ -146,18 +160,18 @@ def main():
                         (x, max(24, y - 8)),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.55,
-                        box_color,
+                        box_color if face.ready or state.name else BRAND_BLUE,
                         2,
                         cv2.LINE_AA,
                     )
                 cv2.rectangle(display, (0, 0), (display.shape[1], 54), (20, 20, 20), -1)
-                cv2.putText(display, label, (18, 37), cv2.FONT_HERSHEY_SIMPLEX, 0.85, color, 2, cv2.LINE_AA)
+                cv2.putText(display, label, (18, 37), cv2.FONT_HERSHEY_SIMPLEX, 0.85, BRAND_BLUE, 2, cv2.LINE_AA)
             elif time.monotonic() - last_frame_at > 2:
                 tracker.clear()
                 states.clear()
                 show_waiting(display)
 
-            cv2.imshow(WINDOW, display)
+            cv2.imshow(WINDOW, fit_to_window(display))
             if cv2.waitKey(30) & 0xFF in (27, ord("q")):
                 break
     except KeyboardInterrupt:

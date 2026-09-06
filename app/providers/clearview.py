@@ -88,16 +88,25 @@ class ClearviewClient:
 
         x, y, width, height = self._validate_rect(rect)
         frame_height, frame_width = frame.shape[:2]
-        x_pad, y_pad = width * 0.2, height * 0.2
-        left, top = max(0, x - x_pad), max(0, y - y_pad)
-        right = min(frame_width, x + width + x_pad)
-        bottom = min(frame_height, y + height + y_pad)
-        if right <= left or bottom <= top:
+        face_left, face_top = max(0, math.floor(x)), max(0, math.floor(y))
+        face_right = min(frame_width, math.ceil(x + width))
+        face_bottom = min(frame_height, math.ceil(y + height))
+        x_pad, y_pad = width * 0.3, height * 0.3
+        left, top = max(0, math.floor(x - x_pad)), max(0, math.floor(y - y_pad))
+        right = min(frame_width, math.ceil(x + width + x_pad))
+        bottom = min(frame_height, math.ceil(y + height + y_pad))
+        if face_right <= face_left or face_bottom <= face_top:
             raise ValueError("Face rectangle is outside the image")
-        encoded, jpeg = cv2.imencode(".jpg", frame)
+        encoded, jpeg = cv2.imencode(".jpg", frame[top:bottom, left:right])
         if not encoded:
-            raise ClearviewError("Could not encode camera frame")
-        return self.embed_bytes(jpeg.tobytes(), (left, top, right - left, bottom - top))
+            raise ClearviewError("Could not encode face crop")
+        crop_rect = (
+            face_left - left,
+            face_top - top,
+            face_right - face_left,
+            face_bottom - face_top,
+        )
+        return self.embed_bytes(jpeg.tobytes(), crop_rect)
 
     def _request(self, path, method="GET", body=None, content_type=None):
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}

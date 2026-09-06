@@ -58,8 +58,8 @@ schema, then fill in `.env`. Python loads it automatically:
 python -m scripts.check_connections
 ```
 
-The live workflow sends one frame and its OpenCV face rectangle to Clearview
-`/mlapi/v1/embed`. It sends the returned vector to the Supabase
+The live workflow sends a padded face crop and its crop-relative OpenCV
+rectangle to Clearview `/mlapi/v1/embed`. It sends the returned vector to the Supabase
 `match_identity_embeddings` RPC and
 returns the strongest image match per identity. It does not use Clearview
 `/detect`, and it does not retrieve criminal records without a later human

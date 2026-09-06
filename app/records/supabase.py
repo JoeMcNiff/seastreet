@@ -75,7 +75,7 @@ class SupabaseClient:
             "image_id,provider,model_version",
         )
 
-    def match_embedding(self, embedding, threshold=0.47, limit=10):
+    def match_embedding(self, embedding, threshold=0.40, limit=10):
         return tuple(
             self._request(
                 "/rest/v1/rpc/match_identity_embeddings",

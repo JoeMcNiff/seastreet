@@ -1,6 +1,7 @@
 import json
 import unittest
 
+import cv2
 import numpy
 
 from app.providers.clearview import ClearviewClient, ClearviewError, ClearviewNoFace
@@ -47,13 +48,23 @@ class IntegrationsTests(unittest.TestCase):
         with self.assertRaises(ClearviewError):
             client.embed_bytes(b"jpeg", (1, 2, 30, 40))
 
-    def test_camera_face_rectangle_is_padded(self):
+    def test_camera_face_is_uploaded_as_a_padded_crop(self):
         client = ClearviewClient("secret")
-        client.embed_bytes = lambda _image, rect: rect
+        uploaded = {}
+
+        def embed(image, rect):
+            uploaded["image"] = image
+            return rect
+
+        client.embed_bytes = embed
 
         rect = client.embed_frame(numpy.zeros((100, 100, 3), dtype=numpy.uint8), (10, 10, 20, 20))
+        crop = cv2.imdecode(
+            numpy.frombuffer(uploaded["image"], dtype=numpy.uint8), cv2.IMREAD_COLOR
+        )
 
-        self.assertEqual(rect, (6.0, 6.0, 28.0, 28.0))
+        self.assertEqual(crop.shape[:2], (32, 32))
+        self.assertEqual(rect, (6, 6, 20, 20))
 
     def test_clearview_detects_and_embeds_faces(self):
         requests = []

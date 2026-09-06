@@ -8,7 +8,7 @@
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #000000; color: white; font: 17px system-ui; }
   main { width: min(100%, 640px); padding: 20px; text-align: center; }
   video { width: 100%; max-height: 75vh; background: #000000; border: 2px solid #004A8A; border-radius: 12px; }
-  button { margin-top: 18px; padding: 14px 24px; border: 0; border-radius: 5px; background: #004A8A; color: white; font: inherit; font-weight: 700; }
+  button { margin-top: 18px; padding: 14px 24px; border: 0; border-radius: 5px; background: #004A8A; color: white; font: inherit; font-weight: 700;}
   #status { margin-top: 14px; color: white; }
 </style>
 <main>
@@ -62,7 +62,13 @@
     if (previous) previous.close();
     const candidate = new RTCPeerConnection();
     peer = candidate;
-    stream.getTracks().forEach(track => candidate.addTrack(track, stream));
+    const sender = candidate.addTrack(stream.getVideoTracks()[0], stream);
+    const parameters = sender.getParameters();
+    if (parameters.encodings.length) {
+      parameters.encodings[0].maxBitrate = 8_000_000;
+      parameters.encodings[0].maxFramerate = 30;
+      await sender.setParameters(parameters).catch(() => {});
+    }
     const alerts = candidate.createDataChannel("alerts");
     alerts.addEventListener("message", event => {
       if (event.data === "match") playMatchSound();
@@ -85,6 +91,7 @@
   }
 
   async function start() {
+    button.hidden = true;
     button.disabled = true;
     status.textContent = "Starting camera…";
     try {
@@ -92,14 +99,20 @@
       await audioContext.resume();
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: {facingMode: {ideal: "environment"}, width: {ideal: 1280}, height: {ideal: 720}}
+        video: {
+          facingMode: {ideal: "environment"},
+          width: {ideal: 1920},
+          height: {ideal: 1080},
+          frameRate: {ideal: 30, max: 30}
+        }
       });
+      stream.getVideoTracks()[0].contentHint = "detail";
       preview.srcObject = stream;
       navigator.wakeLock?.request("screen").catch(() => {});
       await connect();
-      button.hidden = true;
     } catch (error) {
       status.textContent = error.message;
+      button.hidden = false;
       button.disabled = false;
     }
   }
