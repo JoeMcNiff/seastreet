@@ -44,6 +44,7 @@ class PersonState:
     records_query_id: str = None
     records_status: str = None
     records: tuple = ()
+    photo: object = None
     active: bool = True
 
 
@@ -219,8 +220,13 @@ def main(camera_kind="webrtc"):
                         "records_unavailable": "records_unavailable",
                     }[result.status],
                 )
-                if result.status in ALERT_STATUSES:
-                    camera.notify_alert()
+                if result.status == "records_found":
+                    camera.notify_profile(
+                        state.name,
+                        state.similarity,
+                        result.records[0],
+                        state.photo,
+                    )
 
             while True:
                 result = license_scanner.poll()
@@ -298,6 +304,7 @@ def main(camera_kind="webrtc"):
                     ):
                         sample_frame, sample_rect = face.sample(detected_frame)
                         sample = FaceSample(sample_frame, sample_rect, face.rect)
+                        state.photo = sample_frame.copy()
                         state.generation += 1
                         state.running = True
                         state.status = "searching"

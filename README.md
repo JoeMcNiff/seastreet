@@ -21,6 +21,36 @@ After that, run the demo with:
 python -m app.ui.demo
 ```
 
+### Robin Cam native iPhone app
+
+Robin Cam uses the rear iPhone camera at 1080p/30 fps and sends the
+same WebRTC feed to the existing Python receiver. It also receives the existing
+record and invalid-license alerts, including sound and haptics. Criminal-record
+matches display the recognition face crop and record summary in a dismissible
+document-style sheet. The Safari page remains available as a zero-install fallback.
+
+First, start the laptop receiver as usual:
+
+```bash
+python -m app.ui.demo
+```
+
+Then open `ios/SeaStreetCamera/SeaStreetCamera.xcodeproj` in Xcode. In the
+**SeaStreetCamera** target's **Signing & Capabilities** tab, select your Apple
+development team. Connect and trust the iPhone, select it as the run destination,
+and press Run. If iOS asks, enable Developer Mode under
+**Settings → Privacy & Security → Developer Mode** and run again.
+
+On the iPhone, enter the hostname from the camera URL printed by Python (for
+example, `Josephs-MacBook-Air-481.local`) and tap **Start Camera**. Both devices
+must be on the same local network. The app uses the same local HTTPS certificate
+as the Safari camera, so complete the certificate steps below first if that CA is
+not already trusted on the iPhone. Keep the app in the foreground while streaming.
+
+Xcode resolves the app's pinned WebRTC package automatically. A free Personal
+Team is enough for installing a development build on your own iPhone; Xcode may
+ask you to change the bundle identifier if `com.seastreet.camera` is unavailable.
+
 The terminal prints the iPhone camera URL. Keep the Mac and iPhone on the same
 Wi-Fi network, open that URL in Safari, and tap **Start Camera**. Keep Safari
 open and the iPhone unlocked while streaming. Press `Q` or Escape to close the

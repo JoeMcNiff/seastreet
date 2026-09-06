@@ -1,0 +1,284 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* SeaStreetCameraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* SeaStreetCameraApp.swift */; };
+		100000000000000000000002 /* CameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* CameraScreen.swift */; };
+		100000000000000000000003 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* CameraPreview.swift */; };
+		100000000000000000000004 /* CameraClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* CameraClient.swift */; };
+		100000000000000000000005 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 900000000000000000000002 /* WebRTC */; };
+		100000000000000000000006 /* CriminalProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* CriminalProfile.swift */; };
+		100000000000000000000007 /* CriminalProfileCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* CriminalProfileCard.swift */; };
+		100000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000009 /* Assets.xcassets */; };
+		100000000000000000000009 /* WarrantAlert.wav in Resources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000A /* WarrantAlert.wav */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		200000000000000000000001 /* SeaStreetCameraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeaStreetCameraApp.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* CameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraScreen.swift; sourceTree = "<group>"; };
+		200000000000000000000003 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* CameraClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraClient.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		200000000000000000000006 /* SeaStreetCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SeaStreetCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000007 /* CriminalProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriminalProfile.swift; sourceTree = "<group>"; };
+		200000000000000000000008 /* CriminalProfileCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CriminalProfileCard.swift; sourceTree = "<group>"; };
+		200000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		20000000000000000000000A /* WarrantAlert.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = WarrantAlert.wav; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		300000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000005 /* WebRTC in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		400000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				400000000000000000000002 /* SeaStreetCamera */,
+				400000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		400000000000000000000002 /* SeaStreetCamera */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* SeaStreetCameraApp.swift */,
+				200000000000000000000002 /* CameraScreen.swift */,
+				200000000000000000000003 /* CameraPreview.swift */,
+				200000000000000000000004 /* CameraClient.swift */,
+				200000000000000000000007 /* CriminalProfile.swift */,
+				200000000000000000000008 /* CriminalProfileCard.swift */,
+				200000000000000000000009 /* Assets.xcassets */,
+				20000000000000000000000A /* WarrantAlert.wav */,
+				200000000000000000000005 /* Info.plist */,
+			);
+			path = SeaStreetCamera;
+			sourceTree = "<group>";
+		};
+		400000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000006 /* SeaStreetCamera.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		500000000000000000000001 /* SeaStreetCamera */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 800000000000000000000002 /* Build configuration list for PBXNativeTarget "SeaStreetCamera" */;
+			buildPhases = (
+				700000000000000000000001 /* Sources */,
+				300000000000000000000001 /* Frameworks */,
+				700000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SeaStreetCamera;
+			packageProductDependencies = (
+				900000000000000000000002 /* WebRTC */,
+			);
+			productName = SeaStreetCamera;
+			productReference = 200000000000000000000006 /* SeaStreetCamera.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		600000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					500000000000000000000001 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = 800000000000000000000001 /* Build configuration list for PBXProject "SeaStreetCamera" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 400000000000000000000001;
+			packageReferences = (
+				900000000000000000000001 /* XCRemoteSwiftPackageReference "WebRTC" */,
+			);
+			productRefGroup = 400000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				500000000000000000000001 /* SeaStreetCamera */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		700000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000008 /* Assets.xcassets in Resources */,
+				100000000000000000000009 /* WarrantAlert.wav in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		700000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* SeaStreetCameraApp.swift in Sources */,
+				100000000000000000000002 /* CameraScreen.swift in Sources */,
+				100000000000000000000003 /* CameraPreview.swift in Sources */,
+				100000000000000000000004 /* CameraClient.swift in Sources */,
+				100000000000000000000006 /* CriminalProfile.swift in Sources */,
+				100000000000000000000007 /* CriminalProfileCard.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A00000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		A00000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 6C8YDAM6TQ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SeaStreetCamera/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.seastreet.camera;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A00000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 6C8YDAM6TQ;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SeaStreetCamera/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.seastreet.camera;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		800000000000000000000001 /* Build configuration list for PBXProject "SeaStreetCamera" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000001 /* Debug */,
+				A00000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		800000000000000000000002 /* Build configuration list for PBXNativeTarget "SeaStreetCamera" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000003 /* Debug */,
+				A00000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		900000000000000000000001 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC.git";
+			requirement = {
+				kind = exactVersion;
+				version = 152.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		900000000000000000000002 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 900000000000000000000001 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 600000000000000000000001 /* Project object */;
+}

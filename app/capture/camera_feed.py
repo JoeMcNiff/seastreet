@@ -1,6 +1,8 @@
 """Receive iPhone camera frames over WebRTC or Continuity Camera."""
 
 import asyncio
+import base64
+import json
 import socket
 import ssl
 import struct
@@ -25,6 +27,18 @@ CERT_DIR = ROOT / ".camera-feed"
 PHONE_PAGE = Path(__file__).with_name("phone.html")
 CONTINUITY_RUNNER = ROOT / "scripts/run_continuity.sh"
 MAX_FRAME_BYTES = 10_000_000
+PROFILE_FIELDS = (
+    "id",
+    "record_status",
+    "wanted_level",
+    "arrest_count",
+    "active_warrant",
+    "conviction_count",
+    "primary_offense",
+    "warrant_number",
+    "last_arrest_date",
+    "warrant_issue_date",
+)
 
 
 def local_hostname():
@@ -74,11 +88,23 @@ class WebRTCCamera:
 
     def notify_alert(self):
         if self._loop:
-            self._loop.call_soon_threadsafe(self._send_alert)
+            self._loop.call_soon_threadsafe(lambda: self._send("alert"))
 
-    def _send_alert(self):
+    def notify_profile(self, name, similarity, record, photo=None):
+        threading.Thread(
+            target=self._queue_profile,
+            args=(name, similarity, record, photo),
+            daemon=True,
+        ).start()
+
+    def _queue_profile(self, name, similarity, record, photo):
+        message = _profile_message(name, similarity, record, photo)
+        if self._loop:
+            self._loop.call_soon_threadsafe(lambda: self._send(message))
+
+    def _send(self, message):
         if self._alerts and self._alerts.readyState == "open":
-            self._alerts.send("alert")
+            self._alerts.send(message)
 
     def _run(self):
         try:
@@ -213,6 +239,9 @@ class ContinuityCamera:
     def notify_alert(self):
         pass
 
+    def notify_profile(self, _name, _similarity, _record, _photo=None):
+        pass
+
     def _receive(self):
         while not self._stop.is_set():
             try:
@@ -242,3 +271,33 @@ class ContinuityCamera:
                 raise ConnectionError("Continuity Camera helper disconnected")
             data.extend(chunk)
         return data
+
+
+def _profile_message(name, similarity, record, photo=None):
+    payload = {
+        "type": "criminal_profile",
+        "name": name,
+        "similarity": similarity,
+        "record": {key: record.get(key) for key in PROFILE_FIELDS},
+    }
+    if photo is not None:
+        image = (
+            photo
+            if isinstance(photo, numpy.ndarray)
+            else cv2.imdecode(numpy.frombuffer(photo, numpy.uint8), cv2.IMREAD_COLOR)
+        )
+        if image is not None:
+            height, width = image.shape[:2]
+            scale = min(1, 360 / max(width, height))
+            if scale < 1:
+                image = cv2.resize(
+                    image,
+                    (round(width * scale), round(height * scale)),
+                    interpolation=cv2.INTER_AREA,
+                )
+            encoded, jpeg = cv2.imencode(
+                ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 78]
+            )
+            if encoded:
+                payload["photo"] = base64.b64encode(jpeg).decode("ascii")
+    return json.dumps(payload, separators=(",", ":"))
