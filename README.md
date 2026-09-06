@@ -2,7 +2,7 @@
 
 An iPhone camera streams to the Python application on the Mac. WebRTC is the
 default, with Apple Continuity Camera available as a fallback. Both sources use
-the same OpenCV detection, recognition, license, records, audit, and UI pipeline.
+the same OpenCV detection, recognition, records, audit, and UI pipeline.
 
 ## Demo setup
 
@@ -25,8 +25,8 @@ python -m app.ui.demo
 
 Robin Cam uses the rear iPhone camera at 1080p/30 fps and sends the
 same WebRTC feed to the existing Python receiver. It also receives the existing
-record and invalid-license alerts, including sound and haptics. Criminal-record
-matches display the recognition face crop and record summary in a dismissible
+criminal-record alerts, including sound and haptics. Criminal-record matches
+display the recognition face crop and record summary in a dismissible
 document-style sheet. The Safari page remains available as a zero-install fallback.
 
 First, start the laptop receiver as usual:
@@ -55,8 +55,7 @@ The terminal prints the iPhone camera URL. Keep the Mac and iPhone on the same
 Wi-Fi network, open that URL in Safari, and tap **Start Camera**. Keep Safari
 open and the iPhone unlocked while streaming. Press `Q` or Escape to close the
 laptop window. Allow incoming network connections if macOS asks. The iPhone
-plays a short two-tone alert only when a matched person has a synthetic
-criminal record or a scanned license is missing, mismatched, or expired.
+plays an alert only when a matched person has a synthetic criminal record.
 
 To use Apple Continuity Camera instead of the phone webpage:
 
@@ -102,22 +101,11 @@ matched people. Events are appended to `data/audit/events.jsonl`; optional
 operator, unit, encounter, predicate, and log-path values can be set using the
 variables in `.env.example`.
 
-The same feed scans PDF417 barcodes on the back of US driver licenses and IDs.
-Barcode decoding runs locally ten times per second on a separate worker. It
-tries the original image first, then retries with contrast enhancement and 2x
-upscaling for small, dim, or unevenly lit barcodes. DMV lookup runs on another
-thread, so a slow request cannot pause scanning. A decoded AAMVA license number
-is looked up in `public.licenses`, and the scanned name, dates, sex, and state
-are cross-referenced with the database record. The
-license panel stays visible for eight seconds; face detection and recognition
-continue independently throughout the scan and lookup.
-
 ## Clearview and Supabase
 
 Apply the SQL files in `supabase/migrations/` in numeric order to the existing
 Supabase schema, then fill in `.env`. Migration `002` adds the criminal-record
-fields used by the side panel, while migration `003` indexes license-number
-lookups. Python loads `.env` automatically:
+fields used by the side panel. Python loads `.env` automatically:
 
 ```bash
 python -m scripts.check_connections

@@ -14,19 +14,13 @@ import numpy
 from app.audit.evidence_log import EvidenceLog
 from app.capture.camera_feed import ContinuityCamera, WebRTCCamera
 from app.detection.face_detection import FaceDetectionWorker
-from app.detection.license_detection import LicenseScanner
 from app.providers.face_recognition import FaceSample, FacialRecognitionService
 from app.records.criminal_records import CriminalRecordsService
 from app.ui.live_panel import render_live_window
 
 WINDOW = "Camera - Face Detection"
-SEARCH_RETRY_SECONDS = 1.0
-ALERT_STATUSES = {
-    "records_found",
-    "license_expired",
-    "license_mismatch",
-    "license_not_found",
-}
+SEARCH_RETRY_SECONDS = 0.5
+MIN_FACE_PIXELS = 40
 BRAND_BLUE = (138, 74, 0)  # OpenCV uses BGR: #004A8A
 
 
@@ -77,7 +71,6 @@ def main(camera_kind="webrtc"):
 
     camera = ContinuityCamera() if camera_kind == "continuity" else WebRTCCamera()
     detector = None
-    license_scanner = None
     try:
         camera.start()
         log("camera_session_started", "Field camera session activated")
@@ -96,11 +89,8 @@ def main(camera_kind="webrtc"):
         tracked_faces = ()
         recognition = FacialRecognitionService.from_environment()
         records = CriminalRecordsService(recognition.supabase)
-        license_scanner = LicenseScanner(recognition.supabase)
         recognition_results = deque()
         records_results = deque()
-        license_result = None
-        license_result_at = 0
         states = {}
         selected_track_id = None
         stream_connected = False
@@ -228,42 +218,12 @@ def main(camera_kind="webrtc"):
                         state.photo,
                     )
 
-            while True:
-                result = license_scanner.poll()
-                if result is None:
-                    break
-                license_result = result
-                license_result_at = time.monotonic()
-                if result.status == "searching":
-                    log(
-                        "license_scanned",
-                        f"Driver license {result.scan.number} scanned",
-                        license_number=result.scan.number,
-                        license_state=result.scan.state,
-                    )
-                else:
-                    record = result.record or {}
-                    log(
-                        "license_lookup_result",
-                        f"Driver license lookup returned {result.status.replace('_', ' ')}",
-                        license_number=result.scan.number,
-                        license_state=result.scan.state,
-                        lookup_status=result.status,
-                        license_record_id=record.get("id"),
-                        identity_id=record.get("identity_id"),
-                        mismatches=result.mismatches,
-                        error=result.error,
-                    )
-                    if result.status in ALERT_STATUSES:
-                        camera.notify_alert()
-
             if frame is not None:
                 if not stream_connected:
                     stream_connected = True
                     log("camera_stream_connected", f"{camera.name} stream connected")
                 last_frame_at = time.monotonic()
                 detector.submit(frame)
-                license_scanner.submit(frame)
 
             detection = detector.poll()
             if detection is not None:
@@ -298,6 +258,7 @@ def main(camera_kind="webrtc"):
                     now = time.monotonic()
                     if (
                         face.ready
+                        and min(face.rect[2:]) >= MIN_FACE_PIXELS
                         and state.status is None
                         and not state.running
                         and now >= state.retry_at
@@ -359,19 +320,6 @@ def main(camera_kind="webrtc"):
                     )
                 cv2.rectangle(display, (0, 0), (display.shape[1], 54), (20, 20, 20), -1)
                 cv2.putText(display, label, (18, 37), cv2.FONT_HERSHEY_SIMPLEX, 0.85, BRAND_BLUE, 2, cv2.LINE_AA)
-                if license_rect := license_scanner.visible_rect():
-                    x, y, width, height = license_rect
-                    cv2.rectangle(display, (x, y), (x + width, y + height), BRAND_BLUE, 3)
-                    cv2.putText(
-                        display,
-                        "ID BARCODE",
-                        (x, max(24, y - 8)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.55,
-                        BRAND_BLUE,
-                        2,
-                        cv2.LINE_AA,
-                    )
             elif time.monotonic() - last_frame_at > 2:
                 if stream_connected:
                     stream_connected = False
@@ -403,9 +351,6 @@ def main(camera_kind="webrtc"):
                 selected_track_id,
                 audit.recent(8),
                 (window_width, window_height),
-                license_result
-                if time.monotonic() - license_result_at < 8
-                else None,
             )
             cv2.imshow(WINDOW, screen)
             key = cv2.waitKey(30) & 0xFF
@@ -420,8 +365,6 @@ def main(camera_kind="webrtc"):
         log("camera_session_ended", "Field camera session ended")
         if detector:
             detector.close()
-        if license_scanner:
-            license_scanner.close()
         cv2.destroyAllWindows()
         camera.stop()
 

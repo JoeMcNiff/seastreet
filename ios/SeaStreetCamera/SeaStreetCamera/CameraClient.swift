@@ -222,20 +222,17 @@ final class CameraClient: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
-    private func alert(profile: CriminalProfile? = nil) {
+    private func alert(_ profile: CriminalProfile) {
         DispatchQueue.main.async {
-            let pulses = profile == nil ? 1 : 4
-            AudioServicesPlaySystemSound(
-                profile == nil ? 1025 : self.warrantSound
-            )
-            for index in 0..<pulses {
+            AudioServicesPlaySystemSound(self.warrantSound)
+            for index in 0..<4 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.18) {
                     UINotificationFeedbackGenerator().notificationOccurred(.warning)
                 }
             }
-            if let profile { self.criminalProfile = profile }
+            self.criminalProfile = profile
             self.showingAlert = true
-            self.status = profile == nil ? "Alert detected" : "Criminal record found"
+            self.status = "Criminal record found"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 self.showingAlert = false
             }
@@ -356,12 +353,10 @@ extension CameraClient: RTCDataChannelDelegate {
         _ dataChannel: RTCDataChannel,
         didReceiveMessageWith buffer: RTCDataBuffer
     ) {
-        if String(data: buffer.data, encoding: .utf8) == "alert" {
-            alert()
-        } else if let profile = try? JSONDecoder().decode(
+        if let profile = try? JSONDecoder().decode(
             CriminalProfile.self, from: buffer.data
         ), profile.type == "criminal_profile" {
-            alert(profile: profile)
+            alert(profile)
         }
     }
 }

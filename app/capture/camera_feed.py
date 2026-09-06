@@ -86,10 +86,6 @@ class WebRTCCamera:
         if self._thread:
             self._thread.join(timeout=5)
 
-    def notify_alert(self):
-        if self._loop:
-            self._loop.call_soon_threadsafe(lambda: self._send("alert"))
-
     def notify_profile(self, name, similarity, record, photo=None):
         threading.Thread(
             target=self._queue_profile,
@@ -209,7 +205,6 @@ class WebRTCCamera:
         except (MediaStreamError, asyncio.CancelledError):
             pass
 
-
 class ContinuityCamera:
     """Receive JPEG frames from the native macOS Continuity Camera helper."""
 
@@ -235,9 +230,6 @@ class ContinuityCamera:
         if self._thread:
             self._thread.join(timeout=2)
         subprocess.run(["pkill", "-x", "PhoneCamera"], check=False)
-
-    def notify_alert(self):
-        pass
 
     def notify_profile(self, _name, _similarity, _record, _photo=None):
         pass

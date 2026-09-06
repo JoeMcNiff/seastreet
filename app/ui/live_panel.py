@@ -13,9 +13,7 @@ RED = (80, 80, 235)
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
-def render_live_window(
-    frame, states, selected_track_id, events, window_size, license_result=None
-):
+def render_live_window(frame, states, selected_track_id, events, window_size):
     window_width, window_height = window_size
     if window_width <= 0 or window_height <= 0:
         return frame
@@ -28,13 +26,11 @@ def render_live_window(
     resized = cv2.resize(frame, (width, height), interpolation=interpolation)
     left, top = (camera_width - width) // 2, (window_height - height) // 2
     canvas[top : top + height, left : left + width] = resized
-    _draw_panel(
-        canvas[:, camera_width:], states, selected_track_id, events, license_result
-    )
+    _draw_panel(canvas[:, camera_width:], states, selected_track_id, events)
     return canvas
 
 
-def _draw_panel(panel, states, selected_track_id, events, license_result):
+def _draw_panel(panel, states, selected_track_id, events):
     cv2.line(panel, (0, 0), (0, panel.shape[0]), BLUE, max(1, round(2 * _scale(panel))))
     left = 20
 
@@ -42,9 +38,7 @@ def _draw_panel(panel, states, selected_track_id, events, license_result):
     matched_ids = [track_id for track_id, state in states.items() if state.name]
     state = states.get(selected_track_id) if selected_track_id in matched_ids else None
 
-    if license_result:
-        _draw_license(panel, license_result, left, 72)
-    elif state:
+    if state:
         _text(panel, f"SUBJECT {selected_track_id}", left, 72, MUTED, 0.48)
         _text(panel, _clip(state.name, 31), left, 101, WHITE, 0.67, 2)
         _text(panel, f"IDENTITY MATCH  {state.similarity:.2f}", left, 127, GREEN, 0.47)
@@ -79,40 +73,6 @@ def _draw_panel(panel, states, selected_track_id, events, license_result):
         message = _clip(event.get("message", ""), 36)
         _text(panel, f"{timestamp}  {message}", left, y, WHITE, 0.44)
         y += 25
-
-
-def _draw_license(panel, result, left, top):
-    scan, record = result.scan, result.record or {}
-    value = lambda name: record.get(name) or getattr(scan, name)
-    name = " ".join(filter(None, (value("first_name"), value("last_name"))))
-    status, color = {
-        "searching": ("SEARCHING DMV RECORDS...", WHITE),
-        "license_found": ("DMV RECORD FOUND", GREEN),
-        "license_expired": ("LICENSE EXPIRED", RED),
-        "license_mismatch": ("DMV DATA MISMATCH", RED),
-        "license_not_found": ("NO DMV RECORD FOUND", RED),
-        "lookup_unavailable": ("DMV LOOKUP UNAVAILABLE", RED),
-    }[result.status]
-
-    _text(panel, "SCANNED DRIVER LICENSE", left, top, BLUE, 0.5, 2)
-    _text(panel, _clip(name or "UNKNOWN NAME", 31), left, top + 34, WHITE, 0.65, 2)
-    _text(panel, status, left, top + 66, color, 0.46, 2)
-    lines = (
-        ("NUMBER", value("number")),
-        ("STATE", value("state")),
-        ("DATE OF BIRTH", value("date_of_birth")),
-        ("ISSUED", value("issue_date")),
-        ("EXPIRES", value("expiration_date")),
-        ("SEX", value("sex")),
-    )
-    y = top + 101
-    for label, item in lines:
-        if item:
-            _text(panel, f"{label}: {_clip(str(item).upper(), 25)}", left, y, WHITE, 0.44)
-            y += 25
-    if result.mismatches:
-        fields = ", ".join(name.replace("_", " ") for name in result.mismatches)
-        _text(panel, _clip("MISMATCH: " + fields.upper(), 34), left, y + 6, RED, 0.4, 2)
 
 
 def _draw_records(canvas, state, left, top):

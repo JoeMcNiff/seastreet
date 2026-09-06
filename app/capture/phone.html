@@ -40,7 +40,7 @@
       tone.start(start);
       tone.stop(start + 0.13);
     });
-    status.textContent = "Alert detected";
+    status.textContent = "Criminal record found";
   }
 
   function retry(error) {
@@ -79,7 +79,7 @@
     }
     const alerts = candidate.createDataChannel("alerts");
     alerts.addEventListener("message", event => {
-      if (event.data === "alert" || event.data.includes('"type":"criminal_profile"')) playAlertSound();
+      if (event.data.includes('"type":"criminal_profile"')) playAlertSound();
     });
     candidate.addEventListener("connectionstatechange", () => {
       if (candidate !== peer) return;

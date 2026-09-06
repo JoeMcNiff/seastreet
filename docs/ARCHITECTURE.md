@@ -12,10 +12,10 @@ the UI.
 | Component | Responsibility | Does not own |
 | --- | --- | --- |
 | `app/capture` | Receive WebRTC or Continuity Camera frames and retain only the latest decoded frame | Identity decisions |
-| `app/detection` | Detect and track faces; locally decode ID PDF417 barcodes on isolated latest-frame workers | Facial recognition decisions |
+| `app/detection` | Detect and track faces on an isolated latest-frame worker | Facial recognition decisions |
 | `app/workflow` | Coordinate capture, matching, records lookup, and state transitions | Provider-specific HTTP or database code |
 | `app/providers` | Call Clearview `/embed`, validate the vector, and search for identity candidates | Criminal-record storage |
-| `app/records` | Search Supabase vectors, identities, synthetic records, and mock DMV licenses | Embedding generation |
+| `app/records` | Search Supabase vectors, identities, and synthetic records | Embedding generation |
 | `app/audit` | Persist append-only events with timestamps, actor, reason, subject, results, decisions, and disposition | UI presentation |
 | `app/ui` | Show the live feed, matched identities, synthetic records, and event timeline | Provider implementation |
 
