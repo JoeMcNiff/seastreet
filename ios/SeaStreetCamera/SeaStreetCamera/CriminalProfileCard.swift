@@ -55,7 +55,11 @@ struct CriminalProfileCard: View {
                     )
                     field("RECORD ID", value: profile.record.id.map(String.init))
                     field("STATUS", value: profile.record.recordStatus)
-                    field("PRIMARY OFFENSE", value: profile.record.primaryOffense)
+                    field(
+                        "PRIMARY OFFENSE",
+                        value: profile.record.primaryOffense,
+                        warning: true
+                    )
                     field(
                         "ACTIVE WARRANT",
                         value: profile.record.activeWarrant == true ? "YES" : "NO",
